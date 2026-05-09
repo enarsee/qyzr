@@ -30,7 +30,7 @@
       <div class="card">
         ${withCode ? `
           <label>Room code <input id="code" maxlength="6" autocomplete="off" autocapitalize="characters" style="text-transform: uppercase; font-family: 'Inter'; letter-spacing: .1em;"></label>
-          <button class="btn" id="scanBtn" style="width:100%; margin-top: 4px; font-size: 14px;">Scan QR code instead</button>
+          <a href="#" id="scanBtn" style="display:inline-block; font-family:'Inter'; font-size:13px; color:var(--muted); margin-top: 2px; text-decoration: underline;">or scan the QR with your camera</a>
           <video id="scanVideo" playsinline style="display:none; width:100%; border-radius: 12px; margin-top: 8px;"></video>
         ` : ''}
         <label>Your name <input id="name" maxlength="30" autocomplete="given-name"></label>
@@ -40,9 +40,15 @@
       </div>
     `;
     document.getElementById('joinBtn').onclick = () => doJoin(withCode);
+    // Auto-focus: if user hit /play (no code yet), put cursor on the code input.
+    // If they hit /play/<code> (deep-linked), put cursor on the name input so they can type immediately.
+    setTimeout(() => {
+      const target = withCode ? document.getElementById('code') : document.getElementById('name');
+      if (target) target.focus();
+    }, 50);
     if (withCode) {
       const scanBtn = document.getElementById('scanBtn');
-      if (scanBtn) scanBtn.onclick = startQrScan;
+      if (scanBtn) scanBtn.onclick = (e) => { e.preventDefault(); startQrScan(); };
     }
   }
 

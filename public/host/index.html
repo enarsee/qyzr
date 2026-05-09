@@ -35,8 +35,14 @@
     <div style="display:flex; align-items:center; gap: 12px;">
       <span style="color: var(--muted); font-family: 'Inter';">Code</span>
       <span class="room-code tabular" id="roomCode">------</span>
-      <a class="btn" id="joinPageBtn" target="_blank" rel="noopener" style="display:none;">Show joining page</a>
-      <a class="btn" id="presenterBtn" target="_blank" rel="noopener" style="display:none;">Presenter mode</a>
+      <div style="position:relative;" id="shareMenuWrap">
+        <button class="btn" id="shareMenuBtn" type="button" aria-haspopup="menu" aria-expanded="false">Share ▾</button>
+        <div id="shareMenu" role="menu" style="display:none; position:absolute; top:calc(100% + 6px); right:0; background:var(--surface); border-radius:var(--radius-sm); box-shadow:var(--shadow-md); min-width:220px; padding:6px; z-index:20;">
+          <a class="btn" id="joinPageBtn" target="_blank" rel="noopener" role="menuitem" style="display:block; width:100%; text-align:left; box-shadow:none; background:transparent; padding:10px 12px; min-height:0;">Show joining page (QR)</a>
+          <a class="btn" id="presenterBtn" target="_blank" rel="noopener" role="menuitem" style="display:block; width:100%; text-align:left; box-shadow:none; background:transparent; padding:10px 12px; min-height:0;">Presenter mode</a>
+          <button class="btn" id="copyHostUrlMenuItem" type="button" role="menuitem" style="display:block; width:100%; text-align:left; box-shadow:none; background:transparent; padding:10px 12px; min-height:0;">Copy host link</button>
+        </div>
+      </div>
       <button class="btn btn-primary" id="primaryBtn">Start game</button>
     </div>
   </div>

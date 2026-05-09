@@ -34,6 +34,33 @@
     };
   }
   maybeShowSaveBanner();
+
+  // Share dropdown
+  function setupShareMenu() {
+    const btn = document.getElementById('shareMenuBtn');
+    const menu = document.getElementById('shareMenu');
+    if (!btn || !menu || btn.dataset.wired) return;
+    btn.dataset.wired = '1';
+    const close = () => { menu.style.display = 'none'; btn.setAttribute('aria-expanded', 'false'); };
+    const open = () => { menu.style.display = 'block'; btn.setAttribute('aria-expanded', 'true'); };
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menu.style.display === 'block' ? close() : open();
+    });
+    document.addEventListener('click', (e) => {
+      if (!menu.contains(e.target) && e.target !== btn) close();
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    const copyItem = document.getElementById('copyHostUrlMenuItem');
+    if (copyItem) copyItem.onclick = async () => {
+      const url = location.origin + '/host/' + token;
+      try {
+        await navigator.clipboard.writeText(url);
+        copyItem.textContent = 'Copied!';
+        setTimeout(() => { copyItem.textContent = 'Copy host link'; close(); }, 1200);
+      } catch { prompt('Copy this URL:', url); }
+    };
+  }
   let quiz = null;
   let state = null;
   let socket = null;
@@ -50,15 +77,10 @@
     quizName.textContent = quiz.name;
     roomCode.textContent = quiz.room_code;
     const joinBtn = document.getElementById('joinPageBtn');
-    if (joinBtn) {
-      joinBtn.href = `/join/${quiz.room_code}`;
-      joinBtn.style.display = '';
-    }
+    if (joinBtn) joinBtn.href = `/join/${quiz.room_code}`;
     const presenterBtn = document.getElementById('presenterBtn');
-    if (presenterBtn) {
-      presenterBtn.href = `/present/${token}`;
-      presenterBtn.style.display = '';
-    }
+    if (presenterBtn) presenterBtn.href = `/present/${token}`;
+    setupShareMenu();
     if (!socket) connect();
     render();
   }
@@ -102,13 +124,23 @@
   }
 
   function renderEdit() {
+    const isEmpty = !quiz.questions || quiz.questions.length === 0;
     root.innerHTML = `
       <div class="layout">
         <div>
-          <details class="card" style="margin-bottom: 16px;" id="brandingDetails">
+          <details class="card" style="margin-bottom: 16px;" id="brandingDetails" ${isEmpty && !quiz.hero_image_path ? 'open' : ''}>
             <summary style="cursor:pointer; font-family:'Inter'; font-weight:600;">Branding (hero image)</summary>
             <div id="brandingPanel" style="margin-top: 16px;"></div>
           </details>
+          ${isEmpty ? `
+            <div style="background: linear-gradient(135deg, rgba(200,88,122,0.08), rgba(184,137,58,0.08)); border: 1px dashed var(--rose); border-radius: var(--radius-md); padding: 20px 24px; margin-bottom: 16px; display: flex; align-items: center; gap: 16px;">
+              <div style="font-size: 32px; line-height: 1;">${WQ_ICONS.chevron}</div>
+              <div>
+                <strong style="font-family:'Inter'; font-size: 15px;">Add your first question</strong>
+                <p style="margin: 4px 0 0; color: var(--muted); font-size: 14px;">Click <span style="font-family:'Inter'; font-weight: 600;">+ Add</span> to start. Each question has 2–4 options. Toggle "trivia" if you want a correct answer + side; otherwise it's a poll.</p>
+              </div>
+            </div>
+          ` : ''}
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
             <h2 style="margin:0;">Questions</h2>
             <button class="btn btn-primary" id="addQ">${WQ_ICONS.plus} Add</button>
@@ -119,14 +151,20 @@
           </div>
         </div>
         <div class="editor card">
-          <h3 style="margin:0 0 16px;">Editor</h3>
-          <p style="color: var(--muted);">Select a question on the left or add a new one.</p>
+          ${isEmpty
+            ? `<h3 style="margin:0 0 12px;">Editor</h3>
+               <p style="color: var(--muted); margin: 0 0 16px;">Add a question on the left and it'll open here for editing.</p>
+               <button class="btn btn-primary" id="addQFromEditor">${WQ_ICONS.plus} Add your first question</button>`
+            : `<h3 style="margin:0 0 16px;">Editor</h3>
+               <p style="color: var(--muted);">Select a question on the left or add a new one.</p>`}
         </div>
       </div>
     `;
     renderQuestionList();
     renderBrandingPanel();
     document.getElementById('addQ').onclick = () => openEditor(null);
+    const addFromEditor = document.getElementById('addQFromEditor');
+    if (addFromEditor) addFromEditor.onclick = () => openEditor(null);
     document.getElementById('deleteQuizBtn').onclick = async () => {
       const confirmText = `Delete "${quiz.name}" forever? This wipes all questions, players and answers.`;
       if (!confirm(confirmText)) return;
@@ -153,6 +191,7 @@
       div.dataset.id = q.id;
       const pillText = q.is_trivia ? `trivia · ${q.side_tag}` : 'poll';
       div.innerHTML = `
+        <span class="qrow-grip" aria-hidden="true" style="cursor:grab; color:var(--muted); font-family:'Inter'; font-weight:700; user-select:none; padding: 0 4px;">⋮⋮</span>
         <strong style="font-family:'Inter';color:var(--muted);">${q.position}.</strong>
         <span style="flex:1;">${escapeHtml(q.text || '(untitled)')}</span>
         <span class="player-pill">${pillText}</span>
@@ -253,6 +292,7 @@
       const res = await fetch(url, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       if (!res.ok) { const j = await res.json().catch(() => ({})); alert(j.error || 'Save failed'); return; }
       await loadQuiz();
+      toast(q ? 'Saved' : 'Question added');
     };
     if (q) {
       document.getElementById('delQ').onclick = async () => {
@@ -282,6 +322,7 @@
         body: JSON.stringify({ ids })
       });
       await loadQuiz();
+      toast('Reordered');
     });
   }
 
@@ -338,8 +379,9 @@
         method: 'PUT', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ hero_image_path: path })
       });
-      document.getElementById('faceMsg').textContent = 'Hero image saved';
+      document.getElementById('faceMsg').textContent = '';
       await loadQuiz();
+      toast('Hero image saved');
     });
 
   }
@@ -353,6 +395,28 @@
   }
 
   function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  function toast(msg) {
+    let el = document.getElementById('wq-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'wq-toast';
+      el.setAttribute('role', 'status');
+      el.setAttribute('aria-live', 'polite');
+      el.style.cssText = 'position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--ink); color:#fff; padding:12px 20px; border-radius:10px; font-family:Inter,system-ui,sans-serif; font-size:14px; font-weight:500; box-shadow:0 8px 30px rgba(42,27,18,0.18); opacity:0; transition:opacity 200ms ease-out, transform 200ms ease-out; z-index:1000; pointer-events:none;';
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    requestAnimationFrame(() => {
+      el.style.opacity = '1';
+      el.style.transform = 'translateX(-50%) translateY(0)';
+    });
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => {
+      el.style.opacity = '0';
+      el.style.transform = 'translateX(-50%) translateY(20px)';
+    }, 2000);
+  }
 
   loadQuiz();
 })();
