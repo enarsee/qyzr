@@ -41,7 +41,7 @@
     .opt { position: relative; overflow: hidden; background: var(--surface); border-radius: var(--radius-md); box-shadow: var(--shadow-md); padding: 28px 32px; min-height: 22vh; display: grid; grid-template-columns: auto 1fr auto; gap: 20px; align-items: center; transition: transform 250ms ease-out, opacity 250ms ease-out, box-shadow 300ms ease-out, background 300ms ease-out; }
     .opt-letter { font-family: 'Inter'; font-weight: 700; font-size: clamp(36px, 4vw, 56px); color: var(--muted); position: relative; z-index: 2; }
     .opt-text { font-family: 'Cormorant Infant', serif; font-size: clamp(28px, 3vw, 40px); position: relative; z-index: 2; }
-    .opt-face { width: clamp(80px, 8vw, 120px); height: clamp(80px, 8vw, 120px); border-radius: 50%; object-fit: cover; object-position: 50% 25%; position: relative; z-index: 2; transition: filter 300ms ease-out, transform 300ms ease-out; }
+    .opt-face { width: clamp(80px, 8vw, 120px); height: clamp(80px, 8vw, 120px); border-radius: 50%; object-fit: cover; object-position: 50% 25%; background: var(--surface); position: relative; z-index: 2; transition: filter 300ms ease-out, transform 300ms ease-out; }
     .opt-face.winning-face { filter: drop-shadow(0 0 16px var(--gold)); transform: scale(1.05); }
     .opt-vote-fill { position: absolute; inset: 0 0 0 0; background: var(--rose); opacity: 0.28; transform-origin: bottom; transform: scaleY(0); transition: transform 350ms cubic-bezier(0.34, 1.56, 0.64, 1), background 600ms ease-out, opacity 600ms ease-out; pointer-events: none; z-index: 0; }
     .opt-vote-fill.consensus { background: var(--gold); opacity: 0.42; }
@@ -65,7 +65,7 @@
     .vs { display: grid; grid-template-columns: 1fr 200px 1fr; gap: 24px; align-items: center; padding: 24px 32px; background: var(--surface); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
     .vs.neutral-faded { opacity: 0.85; }
     .vs-side { text-align: center; }
-    .vs-face { width: clamp(120px, 18vw, 180px); height: clamp(120px, 18vw, 180px); border-radius: 50%; object-fit: cover; object-position: 50% 25%; transition: opacity 250ms ease-out, box-shadow 400ms ease-out; }
+    .vs-face { width: clamp(120px, 18vw, 180px); height: clamp(120px, 18vw, 180px); border-radius: 50%; object-fit: cover; object-position: 50% 25%; background: var(--surface); transition: opacity 250ms ease-out, box-shadow 400ms ease-out; }
     .vs-face.winner-glow { box-shadow: 0 0 40px var(--gold); }
     .vs-name { font-family: 'Inter'; font-weight: 600; margin-top: 10px; font-size: 22px; }
     .vs-bar { height: 14px; background: var(--bg); border-radius: 7px; overflow: hidden; }

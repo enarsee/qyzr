@@ -91,8 +91,10 @@
   }
 
   function advance() {
-    if (!state || state.status === 'finished') return;
-    if (!state.game_id) { socket.emit('host:start'); return; }
+    // From the QR/lobby screen state may still be null (server doesn't emit
+    // 'state' until a game exists). Treat that as "no game yet" and start.
+    if (state && state.status === 'finished') return;
+    if (!state || !state.game_id) { socket.emit('host:start'); return; }
     if (state.status === 'lobby') { socket.emit('host:next', { game_id: state.game_id }); return; }
     if (state.status === 'active') { socket.emit('host:reveal', { game_id: state.game_id }); return; }
     if (state.status === 'revealing') {

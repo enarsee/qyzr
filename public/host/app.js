@@ -146,7 +146,8 @@
             <button class="btn btn-primary" id="addQ">${WQ_ICONS.plus} Add</button>
           </div>
           <div class="qlist" id="qlist"></div>
-          <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #E3D9CC;">
+          <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #E3D9CC; display:flex; gap: 8px; flex-wrap: wrap;">
+            <button class="btn" id="resetGameBtn" style="background: transparent; box-shadow: none; color: var(--ink);">${WQ_ICONS.chevron} Reset game data</button>
             <button class="btn" id="deleteQuizBtn" style="color: var(--error); background: transparent; box-shadow: none;">${WQ_ICONS.trash} Delete this quiz permanently</button>
           </div>
         </div>
@@ -165,6 +166,13 @@
     document.getElementById('addQ').onclick = () => openEditor(null);
     const addFromEditor = document.getElementById('addQFromEditor');
     if (addFromEditor) addFromEditor.onclick = () => openEditor(null);
+    document.getElementById('resetGameBtn').onclick = async () => {
+      if (!confirm('Reset all game data? This deletes past games, players, and answers — your questions and branding stay. You can then edit questions freely and start a fresh game.')) return;
+      const r = await fetch(`/api/quiz/${token}/reset`, { method: 'POST' });
+      if (!r.ok) { alert('Reset failed.'); return; }
+      await loadQuiz();
+      toast('Game data reset');
+    };
     document.getElementById('deleteQuizBtn').onclick = async () => {
       const confirmText = `Delete "${quiz.name}" forever? This wipes all questions, players and answers.`;
       if (!confirm(confirmText)) return;
@@ -398,7 +406,7 @@
                 return `
                   <div style="text-align: center;">
                     <div style="font-family:'Inter';font-size:12px;color:var(--muted);">${st}</div>
-                    <img src="${src}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;object-position:50% 25%;background:${custom ? 'transparent' : 'var(--bg)'};${custom ? '' : 'opacity:0.85;'}">
+                    <img src="${src}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;object-position:50% 25%;background:${custom ? 'var(--surface)' : 'var(--bg)'};${custom ? '' : 'opacity:0.85;'}">
                     ${!custom ? `<div style="font-family:'Inter';font-size:10px;color:var(--muted);">default</div>` : ''}
                     <input type="file" accept="image/*" data-side="${side}" data-state="${st}" style="font-size:11px; margin-top:4px;">
                   </div>

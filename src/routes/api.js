@@ -216,4 +216,16 @@ router.delete('/api/quiz', (req, res) => {
   res.json({ ok: true });
 });
 
+// Reset game data: wipe games/players/answers but keep quiz, questions,
+// options, faces, hero. Lets the host restart with a clean slate AND unlocks
+// question edits (which were blocked by hasAnswers checks).
+router.post('/api/quiz/:token/reset', (req, res) => {
+  const q = requireQuizByToken(req, res); if (!q) return;
+  const { getDb } = require('../db');
+  const db = getDb();
+  // CASCADE on games handles players + answers automatically
+  db.prepare('DELETE FROM games WHERE quiz_id = ?').run(q.id);
+  res.json({ ok: true });
+});
+
 module.exports = router;

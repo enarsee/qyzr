@@ -130,7 +130,7 @@
           ${cur.options.map((o, i) => {
             const side = optionSide(o.text);
             const face = side
-              ? `<img class="opt-face" data-side="${side}" src="${faceUrl(side, 'neutral')}" alt="" style="width:96px;height:96px;border-radius:50%;object-fit:cover;object-position:50% 25%;position:relative;z-index:2;transition:filter 300ms ease-out;">`
+              ? `<img class="opt-face" data-side="${side}" src="${faceUrl(side, 'neutral')}" alt="" style="width:96px;height:96px;border-radius:50%;object-fit:cover;object-position:50% 25%;background:var(--surface);position:relative;z-index:2;transition:filter 300ms ease-out;">`
               : '';
             return `
               <div class="option-card" data-id="${o.id}" style="position:relative;overflow:hidden;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:20px;">
