@@ -8,9 +8,13 @@ function upsert({ quiz_id, side, state, image_path }) {
   if (!SIDES.includes(side)) throw new Error('side_invalid');
   if (!STATES.includes(state)) throw new Error('state_invalid');
   const db = getDb();
-  db.prepare('DELETE FROM couple_faces WHERE quiz_id = ? AND side = ? AND state = ?').run(quiz_id, side, state);
-  db.prepare('INSERT INTO couple_faces (id, quiz_id, side, state, image_path) VALUES (?,?,?,?,?)')
-    .run(randomUUID(), quiz_id, side, state, image_path);
+  // Transactional so a failed INSERT can't leave the slot empty after the DELETE.
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM couple_faces WHERE quiz_id = ? AND side = ? AND state = ?').run(quiz_id, side, state);
+    db.prepare('INSERT INTO couple_faces (id, quiz_id, side, state, image_path) VALUES (?,?,?,?,?)')
+      .run(randomUUID(), quiz_id, side, state, image_path);
+  });
+  tx();
 }
 
 function byQuiz(quiz_id) {

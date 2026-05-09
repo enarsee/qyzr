@@ -107,10 +107,14 @@ router.put('/api/quiz', (req, res) => {
 router.post('/api/quiz/:token/face', (req, res) => {
   const q = requireQuizByToken(req, res); if (!q) return;
   try {
-    if (!SAFE_IMAGE_PATH.test(String(req.body.image_path || ''))) throw new Error('image_path_invalid');
+    const ip = String(req.body.image_path || '');
+    if (!SAFE_IMAGE_PATH.test(ip)) throw new Error(`image_path_invalid:${JSON.stringify(ip).slice(0,80)}`);
     faces.upsert({ quiz_id: q.id, side: req.body.side, state: req.body.state, image_path: req.body.image_path });
     res.json({ ok: true });
-  } catch (e) { res.status(400).json({ error: e.message }); }
+  } catch (e) {
+    console.error('[POST /face]', { side: req.body?.side, state: req.body?.state, image_path: req.body?.image_path, err: e.message });
+    res.status(400).json({ error: e.message });
+  }
 });
 
 router.post('/api/quiz/:token/question', (req, res) => {
