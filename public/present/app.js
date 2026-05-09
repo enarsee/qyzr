@@ -55,6 +55,8 @@
     const qrRes = await fetch(`/api/qr/${encodeURIComponent(quiz.room_code)}`);
     qrSvg = await qrRes.text();
 
+    // Render lobby immediately so we don't sit on "Loading…" before any state event.
+    renderLobby();
     connect();
     bindKeyboard();
     bindHintFader();
@@ -93,7 +95,13 @@
     if (!state.game_id) { socket.emit('host:start'); return; }
     if (state.status === 'lobby') { socket.emit('host:next', { game_id: state.game_id }); return; }
     if (state.status === 'active') { socket.emit('host:reveal', { game_id: state.game_id }); return; }
-    if (state.status === 'revealing') { socket.emit('host:next', { game_id: state.game_id }); return; }
+    if (state.status === 'revealing') {
+      const cur = state.current_question;
+      const isLast = cur && cur.position >= state.total_questions;
+      if (isLast) socket.emit('host:finish', { game_id: state.game_id });
+      else socket.emit('host:next', { game_id: state.game_id });
+      return;
+    }
   }
 
   function exitConfirm() {
@@ -141,7 +149,8 @@
     if (!state) return;
     if (!state.game_id || state.status === 'lobby') return renderLobby();
     if (state.status === 'active') return renderQuestion();
-    if (state.status === 'revealing' || state.status === 'finished') return renderReveal();
+    if (state.status === 'revealing') return renderReveal();
+    if (state.status === 'finished') return renderFinished();
   }
 
   // ── Lobby ─────────────────────────────────────────────────
@@ -169,7 +178,7 @@
   function renderTicker() {
     const t = document.getElementById('ticker');
     if (!t) return;
-    const names = state.players.map(p => p.name);
+    const names = (state?.players || []).map(p => p.name);
     if (!names.length) { t.innerHTML = ''; return; }
     t.innerHTML = names.map(n => `<span>${escapeHtml(n)} ·</span>`).join('');
   }
@@ -319,6 +328,41 @@
           </div>
         </div>
       ` : ''}
+    `;
+  }
+
+  // ── Finished — Thank you screen ──────────────────────────
+  function renderFinished() {
+    root.className = 'stage lobby';
+    const r = lastReveal || {};
+    const top = (r.leaderboard || []).slice(0, 3).filter(p => p.score > 0);
+    const tables = (r.table_leaderboard || []).slice(0, 3).filter(t => t.score > 0);
+    const playerCount = state?.players?.length || 0;
+    root.innerHTML = `
+      <div class="lobby-hero" style="grid-column: 1 / -1; text-align: center;">
+        ${quiz.hero_image_path ? `<img src="${quiz.hero_image_path}" style="width:100%; max-width:760px; max-height:48vh; object-fit:cover; border-radius: var(--radius-lg); box-shadow: var(--shadow-md); margin: 0 auto;">` : ''}
+        <h1 class="enter" style="font-family: 'Great Vibes', cursive; font-size: clamp(80px, 10vw, 180px); margin: 16px 0 4px; color: ${quiz.accent_color}; line-height: 1;">Thank you</h1>
+        <p class="enter-2" style="font-family: 'Cormorant Infant', serif; font-size: clamp(28px, 3vw, 44px); color: var(--ink); margin: 0;">
+          ${escapeHtml(quiz.bride_label || 'Bride')} <span style="color: var(--rose);">&amp;</span> ${escapeHtml(quiz.groom_label || 'Groom')}
+        </p>
+        <p class="enter-3" style="font-family: 'Inter'; font-size: 22px; color: var(--muted); margin: 16px 0 0;">
+          ${playerCount} ${playerCount === 1 ? 'guest played' : 'guests played'} · ${state.total_questions} ${state.total_questions === 1 ? 'question' : 'questions'}
+        </p>
+        ${top.length ? `
+          <div class="enter-3" style="margin-top: 36px; display: grid; grid-template-columns: ${tables.length ? '1fr 1fr' : '1fr'}; gap: 24px; max-width: 800px; margin-left: auto; margin-right: auto;">
+            <div class="lb">
+              <h3 style="text-align:left;">Top players</h3>
+              <ol style="text-align:left;">${top.map(p => `<li><strong>${escapeHtml(p.name)}</strong> · ${p.score}</li>`).join('')}</ol>
+            </div>
+            ${tables.length ? `
+              <div class="lb">
+                <h3 style="text-align:left;">Top ${escapeHtml(quiz.group_label || 'tables')}</h3>
+                <ol style="text-align:left;">${tables.map(t => `<li>${escapeHtml(t.group_value)} · ${t.score}</li>`).join('')}</ol>
+              </div>
+            ` : ''}
+          </div>
+        ` : ''}
+      </div>
     `;
   }
 
