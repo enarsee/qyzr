@@ -9,9 +9,12 @@ const router = express.Router();
 const uploadDir = path.join(config.dataDir, 'uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
 
+// 20 MB raw upload limit — modern phone photos and bg-removed PNGs can easily
+// be 8-15 MB. Sharp resizes to ≤2048px and re-encodes to WebP so the stored
+// file is small regardless of input size.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 } // 5 MB
+  limits: { fileSize: 20 * 1024 * 1024 }
 });
 
 const ALLOWED_FORMATS = new Set(['jpeg', 'png', 'webp']);
