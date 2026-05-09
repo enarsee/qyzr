@@ -15,6 +15,11 @@
     quiz = await r.json();
     quizName.textContent = quiz.name;
     roomCode.textContent = quiz.room_code;
+    const joinBtn = document.getElementById('joinPageBtn');
+    if (joinBtn) {
+      joinBtn.href = `/join/${quiz.room_code}`;
+      joinBtn.style.display = '';
+    }
     if (!socket) connect();
     render();
   }

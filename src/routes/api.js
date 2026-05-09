@@ -1,4 +1,5 @@
 const express = require('express');
+const QRCode = require('qrcode');
 const v = require('../lib/validators');
 const ids = require('../lib/ids');
 const quizzes = require('../repos/quizzes');
@@ -7,6 +8,17 @@ const questions = require('../repos/questions');
 const config = require('../config');
 
 const router = express.Router();
+
+router.get('/api/qr/:code', async (req, res) => {
+  try {
+    const code = v.validateRoomCode(req.params.code);
+    const url = `${config.publicUrl}/play/${code}`;
+    const svg = await QRCode.toString(url, {
+      type: 'svg', errorCorrectionLevel: 'M', margin: 1, color: { dark: '#2A1B12', light: '#FFFFFF' }
+    });
+    res.set('content-type', 'image/svg+xml').set('cache-control', 'public, max-age=300').send(svg);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
 
 const SAFE_IMAGE_PATH = /^\/uploads\/[A-Za-z0-9_\-]+\.webp$/;
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;

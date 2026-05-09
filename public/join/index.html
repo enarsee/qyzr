@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Join · Wedding Quiz</title>
+  <link rel="stylesheet" href="/shared/styles.css">
+  <style>
+    body { font-size: 24px; }
+    .join-shell { min-height: 100dvh; padding: 32px; display: grid; gap: 24px; }
+    .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: center; height: calc(100dvh - 64px); }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+    .hero-side { display: flex; flex-direction: column; gap: 16px; align-items: center; justify-content: center; text-align: center; }
+    .hero-img { width: 100%; max-width: 520px; max-height: 60vh; object-fit: cover; border-radius: var(--radius-lg); box-shadow: var(--shadow-md); }
+    .qr-side { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; padding: 32px; background: var(--surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); }
+    .qr-side svg { width: min(60vh, 480px); height: min(60vh, 480px); }
+    .room-code-big { font-family: 'Inter'; font-weight: 700; font-size: 64px; letter-spacing: 0.1em; color: var(--rose); }
+    .url-line { font-family: 'Inter'; font-weight: 600; font-size: 24px; color: var(--ink); }
+  </style>
+</head>
+<body>
+  <div class="join-shell" aria-live="polite">
+    <div class="layout" id="root">
+      <p style="text-align:center; padding-top:120px; grid-column: 1 / -1;">Loading…</p>
+    </div>
+  </div>
+  <script src="/join/app.js"></script>
+</body>
+</html>

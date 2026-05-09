@@ -28,7 +28,11 @@
     root.innerHTML = `
       <h1 class="font-script" style="font-size:48px; color: var(--rose); text-align:center; margin: 24px 0;">${escapeHtml(quiz?.name || 'Wedding Quiz')}</h1>
       <div class="card">
-        ${withCode ? `<label>Room code <input id="code" maxlength="6" autocomplete="off" autocapitalize="characters" style="text-transform: uppercase; font-family: 'Inter'; letter-spacing: .1em;"></label>` : ''}
+        ${withCode ? `
+          <label>Room code <input id="code" maxlength="6" autocomplete="off" autocapitalize="characters" style="text-transform: uppercase; font-family: 'Inter'; letter-spacing: .1em;"></label>
+          <button class="btn" id="scanBtn" style="width:100%; margin-top: 4px; font-size: 14px;">Scan QR code instead</button>
+          <video id="scanVideo" playsinline style="display:none; width:100%; border-radius: 12px; margin-top: 8px;"></video>
+        ` : ''}
         <label>Your name <input id="name" maxlength="30" autocomplete="given-name"></label>
         <label>${escapeHtml(quiz?.group_label || 'Table')} <input id="grp" maxlength="10" inputmode="numeric"></label>
         <button class="btn btn-primary" id="joinBtn" style="width:100%; margin-top:12px;">Join</button>
@@ -36,6 +40,48 @@
       </div>
     `;
     document.getElementById('joinBtn').onclick = () => doJoin(withCode);
+    if (withCode) {
+      const scanBtn = document.getElementById('scanBtn');
+      if (scanBtn) scanBtn.onclick = startQrScan;
+    }
+  }
+
+  async function startQrScan() {
+    const errEl = document.getElementById('err');
+    const video = document.getElementById('scanVideo');
+    if (!('BarcodeDetector' in window)) {
+      errEl.textContent = 'In-app scan not supported. Open your phone camera and point at the QR.';
+      return;
+    }
+    try {
+      const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      video.style.display = 'block';
+      video.srcObject = stream;
+      await video.play();
+      const tick = async () => {
+        if (!video.srcObject) return;
+        try {
+          const codes = await detector.detect(video);
+          if (codes.length) {
+            const raw = codes[0].rawValue;
+            // QR encodes a URL like https://qyzr.app/play/ABC234
+            const m = raw.match(/\/play\/([A-Z0-9]{6})/i);
+            if (m) {
+              stream.getTracks().forEach(t => t.stop());
+              video.srcObject = null; video.style.display = 'none';
+              const codeInput = document.getElementById('code');
+              if (codeInput) codeInput.value = m[1].toUpperCase();
+              return;
+            }
+          }
+        } catch {}
+        requestAnimationFrame(tick);
+      };
+      tick();
+    } catch (e) {
+      errEl.textContent = 'Camera permission denied. You can also open your phone camera app and scan the QR there.';
+    }
   }
 
   async function doJoin(withCode) {

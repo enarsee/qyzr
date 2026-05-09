@@ -8,5 +8,6 @@ router.get('/host/:token', (_req, res) => res.sendFile(path.join(__dirname, '..'
 router.get('/display/:code', (_req, res) => res.sendFile(path.join(__dirname, '..', '..', 'public', 'display', 'index.html')));
 router.get('/play/', (_req, res) => res.sendFile(path.join(__dirname, '..', '..', 'public', 'play', 'index.html')));
 router.get('/play/:code', (_req, res) => res.sendFile(path.join(__dirname, '..', '..', 'public', 'play', 'index.html')));
+router.get('/join/:code', (_req, res) => res.sendFile(path.join(__dirname, '..', '..', 'public', 'join', 'index.html')));
 
 module.exports = router;
