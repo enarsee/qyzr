@@ -1,1 +1,39 @@
-<!doctype html><meta charset="utf-8"><title>WQ</title><h1>placeholder</h1>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Host · Wedding Quiz</title>
+  <link rel="stylesheet" href="/shared/styles.css">
+  <style>
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:16px 24px; background: var(--surface); box-shadow: var(--shadow-sm); position: sticky; top: 0; z-index: 10; }
+    .room-code { font-family: 'Inter'; font-weight: 700; letter-spacing: 0.1em; padding: 6px 12px; background: var(--bg); border-radius: var(--radius-sm); }
+    .layout { display: grid; grid-template-columns: 3fr 2fr; gap: 24px; padding: 24px; }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+    .qlist { display:flex; flex-direction:column; gap: 12px; }
+    .qrow { background: var(--surface); border-radius: var(--radius-sm); padding: 16px; box-shadow: var(--shadow-sm); display:flex; align-items: center; gap: 12px; cursor: grab; }
+    .qrow.selected { outline: 2px solid var(--rose); }
+    .editor { position: sticky; top: 80px; }
+    .control-deck { padding: 48px; text-align: center; }
+    .big-btn { font-size: 24px; padding: 24px 48px; }
+    .player-pill { display:inline-block; background: var(--bg); border-radius: 999px; padding: 4px 12px; margin: 2px; font-family: 'Inter'; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="font-script" style="font-size:32px; color: var(--rose);" id="quizName">Quiz</div>
+    <div style="display:flex; align-items:center; gap: 16px;">
+      <span style="color: var(--muted); font-family: 'Inter';">Code</span>
+      <span class="room-code tabular" id="roomCode">------</span>
+      <button class="btn btn-primary" id="primaryBtn">Start game</button>
+    </div>
+  </div>
+  <div id="root" aria-live="polite">
+    <p style="text-align:center; padding: 80px;">Loading…</p>
+  </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/shared/icons.js"></script>
+  <script src="/shared/socket.js"></script>
+  <script src="/host/app.js"></script>
+</body>
+</html>
