@@ -16,7 +16,7 @@
     quizName.textContent = quiz.name;
     roomCode.textContent = quiz.room_code;
     if (!socket) connect();
-    else render();
+    render();
   }
 
   function connect() {

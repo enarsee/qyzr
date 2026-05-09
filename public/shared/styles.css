@@ -42,6 +42,11 @@ button, .btn {
   transition: transform var(--t), box-shadow var(--t), background var(--t);
   background: var(--surface); color: var(--ink);
   box-shadow: var(--shadow-sm);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 .btn-primary { background: var(--rose); color: #fff; }
 .btn-primary:hover { box-shadow: var(--shadow-md); }
