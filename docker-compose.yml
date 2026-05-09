@@ -1,0 +1,27 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - PUBLIC_URL=${PUBLIC_URL}
+    volumes:
+      - ./data:/data
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      - PUBLIC_HOST=${PUBLIC_HOST}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./data/uploads:/srv/uploads:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
