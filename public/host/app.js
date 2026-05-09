@@ -378,9 +378,35 @@
     panel.innerHTML = `
       <h4 style="margin: 0 0 8px;">Hero image</h4>
       <p style="color: var(--muted); font-size: 14px; margin: 0 0 12px;">Shown on the lobby and joining pages.</p>
-      <div style="display:flex; gap: 12px; align-items: center; margin-bottom: 16px;">
+      <div style="display:flex; gap: 12px; align-items: center; margin-bottom: 24px;">
         ${quiz.hero_image_path ? `<img src="${quiz.hero_image_path}" style="width: 120px; height: 80px; object-fit: cover; border-radius: 8px;">` : '<div style="width:120px;height:80px;background:var(--bg);border-radius:8px;"></div>'}
         <input type="file" id="heroFile" accept="image/*">
+      </div>
+
+      <h4 style="margin: 16px 0 8px;">Couple faces <span style="font-family:'Inter';font-size:12px;color:var(--muted);font-weight:400;">— optional</span></h4>
+      <p style="color: var(--muted); font-size: 14px; margin: 0 0 12px;">
+        Used in the VS panel after trivia questions. Upload one photo per mood per side, or leave them — cartoon defaults are shown otherwise.
+      </p>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        ${['bride','groom'].map(side => `
+          <div>
+            <strong>${escapeHtml(side === 'bride' ? (quiz.bride_label || 'Bride') : (quiz.groom_label || 'Groom'))}</strong>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+              ${FACE_STATES.map(st => {
+                const custom = facesByKey[`${side}:${st}`];
+                const src = custom || `/defaults/${side}-${st}.svg`;
+                return `
+                  <div style="text-align: center;">
+                    <div style="font-family:'Inter';font-size:12px;color:var(--muted);">${st}</div>
+                    <img src="${src}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;background:${custom ? 'transparent' : 'var(--bg)'};${custom ? '' : 'opacity:0.85;'}">
+                    ${!custom ? `<div style="font-family:'Inter';font-size:10px;color:var(--muted);">default</div>` : ''}
+                    <input type="file" accept="image/*" data-side="${side}" data-state="${st}" style="font-size:11px; margin-top:4px;">
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `).join('')}
       </div>
       <p id="faceMsg" style="color: var(--success); margin-top: 12px; min-height: 18px; font-family: 'Inter';"></p>
     `;
@@ -400,6 +426,25 @@
       toast('Hero image saved');
     });
 
+    // Wire each face upload input
+    panel.querySelectorAll('input[type="file"][data-side]').forEach(input => {
+      input.addEventListener('change', async (e) => {
+        const f = e.target.files[0]; if (!f) return;
+        const side = e.target.dataset.side, state = e.target.dataset.state;
+        const fd = new FormData(); fd.append('image', f);
+        const up = await fetch('/api/upload', { method: 'POST', body: fd });
+        if (!up.ok) { document.getElementById('faceMsg').textContent = 'Upload failed'; return; }
+        const { path } = await up.json();
+        const r = await fetch(`/api/quiz/${token}/face`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ side, state, image_path: path })
+        });
+        if (!r.ok) { document.getElementById('faceMsg').textContent = 'Save failed'; return; }
+        document.getElementById('faceMsg').textContent = '';
+        await loadQuiz();
+        toast(`${side} · ${state} saved`);
+      });
+    });
   }
 
   function facesComplete() {

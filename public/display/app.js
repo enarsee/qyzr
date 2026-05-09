@@ -199,6 +199,28 @@
             </div>
           </div>
         ` : ''}
+        ${isTrivia ? renderVsPanel(r) : ''}
+      </div>
+    `;
+  }
+
+  function renderVsPanel(r) {
+    const sc = r.side_scores || { bride: 0, groom: 0 };
+    const ss = r.side_states || { bride: 'neutral', groom: 'neutral' };
+    if (sc.bride === 0 && sc.groom === 0) return '';
+    const total = Math.max(sc.bride + sc.groom, 1);
+    const bridePct = (sc.bride / total) * 100;
+    return `
+      <div class="vs-panel" style="margin-top: 24px;">
+        <div style="text-align:center;">
+          <img class="vs-face ${ss.bride === 'winner' ? 'winner-glow' : ''}" src="${faceUrl('bride', ss.bride)}" alt="">
+          <div style="font-family:'Inter';font-weight:600;margin-top:8px;">${escapeHtml(quiz.bride_label || 'Bride')} · ${sc.bride}</div>
+        </div>
+        <div class="vs-bar"><div class="vs-bar-fill" style="width:${bridePct}%;"></div></div>
+        <div style="text-align:center;">
+          <img class="vs-face ${ss.groom === 'winner' ? 'winner-glow' : ''}" src="${faceUrl('groom', ss.groom)}" alt="">
+          <div style="font-family:'Inter';font-weight:600;margin-top:8px;">${escapeHtml(quiz.groom_label || 'Groom')} · ${sc.groom}</div>
+        </div>
       </div>
     `;
   }

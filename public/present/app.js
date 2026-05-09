@@ -328,6 +328,19 @@
           </div>
         </div>
       ` : ''}
+      ${isTrivia && (r.side_scores?.bride || r.side_scores?.groom) ? `
+        <div class="vs enter-3">
+          <div class="vs-side">
+            <img class="vs-face ${(r.side_states?.bride === 'winner') ? 'winner-glow' : ''}" src="${faceUrl('bride', r.side_states?.bride || 'neutral')}" alt="">
+            <div class="vs-name">${escapeHtml(quiz.bride_label || 'Bride')} · ${r.side_scores?.bride || 0}</div>
+          </div>
+          <div class="vs-bar"><div class="vs-bar-fill" style="width:${(r.side_scores?.bride || 0) / Math.max((r.side_scores?.bride || 0) + (r.side_scores?.groom || 0), 1) * 100}%;"></div></div>
+          <div class="vs-side">
+            <img class="vs-face ${(r.side_states?.groom === 'winner') ? 'winner-glow' : ''}" src="${faceUrl('groom', r.side_states?.groom || 'neutral')}" alt="">
+            <div class="vs-name">${escapeHtml(quiz.groom_label || 'Groom')} · ${r.side_scores?.groom || 0}</div>
+          </div>
+        </div>
+      ` : ''}
     `;
   }
 
