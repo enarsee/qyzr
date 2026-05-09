@@ -37,6 +37,21 @@ function register(io, socket) {
     const { id: gid } = games.create(ctx.quiz_id);
     ctx.game_id = gid;
     socket.join(`host:${gid}`);
+
+    // Migrate pre-connected display and player sockets into the new game rooms.
+    // They joined display:pending / players:pending because no game existed yet.
+    for (const [, sock] of io.sockets.sockets) {
+      const sctx = sock.data && sock.data.ctx;
+      if (!sctx || sctx.game_id !== null) continue;
+      if (sctx.quiz_id !== ctx.quiz_id) continue;
+      if (sctx.role !== 'display' && sctx.role !== 'player') continue;
+      sctx.game_id = gid;
+      const pendingRoom = sctx.role === 'player' ? 'players:pending' : 'display:pending';
+      sock.leave(pendingRoom);
+      const newRoom = sctx.role === 'player' ? `players:${gid}` : `display:${gid}`;
+      sock.join(newRoom);
+    }
+
     broadcastState(io, gid);
   });
 

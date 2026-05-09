@@ -122,11 +122,13 @@
         </div>
         <div class="vs-panel">
           <div style="text-align:center;">
+            ${ss.bride === 'winner' ? `<div style="color:gold;">${WQ_ICONS.crown}</div>` : ''}
             <img class="vs-face ${ss.bride === 'winner' ? 'winner-glow' : ''}" src="${faceUrl('bride', ss.bride)}" alt="">
             <div style="font-family:'Inter';font-weight:600;margin-top:8px;">${escapeHtml(quiz.bride_label)} · ${sc.bride}</div>
           </div>
           <div class="vs-bar"><div class="vs-bar-fill" style="width: ${bridePct}%;"></div></div>
           <div style="text-align:center;">
+            ${ss.groom === 'winner' ? `<div style="color:gold;">${WQ_ICONS.crown}</div>` : ''}
             <img class="vs-face ${ss.groom === 'winner' ? 'winner-glow' : ''}" src="${faceUrl('groom', ss.groom)}" alt="">
             <div style="font-family:'Inter';font-weight:600;margin-top:8px;">${escapeHtml(quiz.groom_label)} · ${sc.groom}</div>
           </div>

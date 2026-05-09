@@ -32,7 +32,12 @@ router.post('/api/quiz', (req, res) => {
       if (!HEX_COLOR.test(c)) throw new Error('accent_color_invalid');
       return c;
     })();
-    const hero_image_path = req.body.hero_image_path || null;
+    const hero_image_path = (() => {
+      const p = req.body.hero_image_path;
+      if (p == null || p === '') return null;
+      if (!SAFE_IMAGE_PATH.test(String(p))) throw new Error('hero_image_path_invalid');
+      return p;
+    })();
 
     const creator_token = ids.creatorToken();
     let room_code = ids.roomCode();
@@ -101,13 +106,19 @@ router.post('/api/quiz/:token/question', (req, res) => {
   try {
     const text = v.validateQuestionText(req.body.text);
     const side_tag = v.validateSideTag(req.body.side_tag);
+    const image_path = (() => {
+      const p = req.body.image_path;
+      if (p == null || p === '') return null;
+      if (!SAFE_IMAGE_PATH.test(String(p))) throw new Error('image_path_invalid');
+      return p;
+    })();
     const opts = (req.body.options || []).map(o => ({
       text: v.validateOptionText(o.text),
       is_correct: !!o.is_correct
     }));
     if (opts.length < 2 || opts.length > 4) throw new Error('options_count_invalid');
     if (opts.filter(o => o.is_correct).length !== 1) throw new Error('exactly_one_correct_required');
-    const out = questions.create({ quiz_id: q.id, text, image_path: req.body.image_path || null, side_tag, options: opts });
+    const out = questions.create({ quiz_id: q.id, text, image_path, side_tag, options: opts });
     res.json(out);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -119,8 +130,17 @@ router.put('/api/question/:id', (req, res) => {
   try {
     const fields = {};
     if (req.body.text !== undefined) fields.text = v.validateQuestionText(req.body.text);
-    if (req.body.side_tag !== undefined) fields.side_tag = v.validateSideTag(req.body.side_tag);
-    if (req.body.image_path !== undefined) fields.image_path = req.body.image_path;
+    if (req.body.side_tag !== undefined) {
+      if (questions.hasAnswers(req.params.id)) {
+        return res.status(409).json({ error: 'side_tag_locked_after_play' });
+      }
+      fields.side_tag = v.validateSideTag(req.body.side_tag);
+    }
+    if (req.body.image_path !== undefined) {
+      const p = req.body.image_path;
+      if (p !== null && !SAFE_IMAGE_PATH.test(String(p))) throw new Error('image_path_invalid');
+      fields.image_path = p;
+    }
     questions.update(req.params.id, fields);
 
     if (Array.isArray(req.body.options)) {

@@ -35,6 +35,12 @@ function attach(httpServer) {
     });
     require('./handlers/player').register(io, socket);
     require('./handlers/host').register(io, socket);
+
+    // Spec §6: emit state on connect for host and display when a game is active.
+    if ((ctx.role === 'host' || ctx.role === 'display') && ctx.game_id) {
+      const { buildStatePayload } = require('./state');
+      socket.emit('state', buildStatePayload({ game_id: ctx.game_id, includeCorrect: ctx.role === 'host' }));
+    }
   });
 
   return io;
