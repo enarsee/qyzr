@@ -16,7 +16,7 @@
 
   function faceUrl(side, st) {
     const f = (quiz.faces || []).find(x => x.side === side && x.state === st);
-    return f ? f.image_path : '';
+    return f ? f.image_path : `/defaults/${side}-${st}.svg`;
   }
 
   function connect() {

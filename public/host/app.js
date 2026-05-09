@@ -42,7 +42,7 @@
   }
 
   function primaryButtonLabel() {
-    if (!state || state.status === 'finished' || !state.game_id) return facesComplete() ? 'Start game' : 'Upload all faces first';
+    if (!state || state.status === 'finished' || !state.game_id) return 'Start game';
     if (state.status === 'lobby') return 'Show first question';
     if (state.status === 'active') return 'Reveal answer';
     if (state.status === 'revealing') return 'Next question';
@@ -50,10 +50,7 @@
   }
 
   function onPrimary() {
-    if (!state || !state.game_id) {
-      if (!facesComplete()) { alert('Upload all 5 face images for each side before starting.'); return; }
-      socket.emit('host:start'); return;
-    }
+    if (!state || !state.game_id) { socket.emit('host:start'); return; }
     if (state.status === 'lobby') { socket.emit('host:next', { game_id: state.game_id }); return; }
     if (state.status === 'active') { socket.emit('host:reveal', { game_id: state.game_id }); return; }
     if (state.status === 'revealing') { socket.emit('host:next', { game_id: state.game_id }); return; }
@@ -240,22 +237,24 @@
         <input type="file" id="heroFile" accept="image/*">
       </div>
 
-      <h4 style="margin: 16px 0 8px;">Couple faces</h4>
-      <p style="color: var(--muted); font-size: 14px; margin: 0 0 12px;">Upload a photo for each mood. Required: ${FACE_STATES.length} per side. The display screen swaps faces based on the score.</p>
+      <h4 style="margin: 16px 0 8px;">Couple faces <span style="font-family:'Inter';font-size:12px;color:var(--muted);font-weight:400;">— optional</span></h4>
+      <p style="color: var(--muted); font-size: 14px; margin: 0 0 12px;">Upload a photo for each mood, or leave them — the display will use cartoon defaults (shown below).</p>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
         ${['bride','groom'].map(side => `
           <div>
             <strong>${escapeHtml(side === 'bride' ? quiz.bride_label : quiz.groom_label)}</strong>
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
-              ${FACE_STATES.map(st => `
+              ${FACE_STATES.map(st => {
+                const custom = facesByKey[`${side}:${st}`];
+                const src = custom || `/defaults/${side}-${st}.svg`;
+                return `
                 <div style="text-align: center;">
                   <div style="font-family:'Inter';font-size:12px;color:var(--muted);">${st}</div>
-                  ${facesByKey[`${side}:${st}`]
-                    ? `<img src="${facesByKey[`${side}:${st}`]}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;">`
-                    : `<div style="width:64px;height:64px;border-radius:50%;background:var(--bg);margin:0 auto;"></div>`}
+                  <img src="${src}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;background:${custom ? 'transparent' : 'var(--bg)'};${custom ? '' : 'opacity:0.85;'}">
+                  ${!custom ? `<div style="font-family:'Inter';font-size:10px;color:var(--muted);">default</div>` : ''}
                   <input type="file" accept="image/*" data-side="${side}" data-state="${st}" style="font-size:11px; margin-top:4px;">
                 </div>
-              `).join('')}
+              `}).join('')}
             </div>
           </div>
         `).join('')}
