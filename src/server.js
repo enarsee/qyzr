@@ -8,7 +8,8 @@ function buildApp() {
   app.set('trust proxy', 1); // Caddy in front sets X-Forwarded-For; required for express-rate-limit
   app.use(express.json({ limit: '100kb' }));
   app.use(express.static(path.join(__dirname, '..', 'public')));
-  // Routes wired in later tasks:
+  // Routes
+  app.use(require('./routes/upload'));
   app.use(require('./routes/pages'));
   return app;
 }
