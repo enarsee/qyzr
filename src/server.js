@@ -9,6 +9,7 @@ function buildApp() {
   app.use(express.json({ limit: '100kb' }));
   app.use(express.static(path.join(__dirname, '..', 'public')));
   // Routes
+  app.use(require('./routes/api'));
   app.use(require('./routes/upload'));
   app.use(require('./routes/pages'));
   return app;
