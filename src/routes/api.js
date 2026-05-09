@@ -117,7 +117,8 @@ router.post('/api/quiz/:token/question', (req, res) => {
   const q = requireQuizByToken(req, res); if (!q) return;
   try {
     const text = v.validateQuestionText(req.body.text);
-    const side_tag = v.validateSideTag(req.body.side_tag);
+    // Poll mode: side_tag defaults to neutral; clients no longer set it.
+    const side_tag = req.body.side_tag ? v.validateSideTag(req.body.side_tag) : 'neutral';
     const image_path = (() => {
       const p = req.body.image_path;
       if (p == null || p === '') return null;
@@ -126,10 +127,9 @@ router.post('/api/quiz/:token/question', (req, res) => {
     })();
     const opts = (req.body.options || []).map(o => ({
       text: v.validateOptionText(o.text),
-      is_correct: !!o.is_correct
+      is_correct: !!o.is_correct  // retained in DB for forward-compat; UI no longer surfaces it
     }));
     if (opts.length < 2 || opts.length > 4) throw new Error('options_count_invalid');
-    if (opts.filter(o => o.is_correct).length !== 1) throw new Error('exactly_one_correct_required');
     const out = questions.create({ quiz_id: q.id, text, image_path, side_tag, options: opts });
     res.json(out);
   } catch (e) { res.status(400).json({ error: e.message }); }
@@ -163,7 +163,6 @@ router.put('/api/question/:id', (req, res) => {
         text: v.validateOptionText(o.text), is_correct: !!o.is_correct
       }));
       if (opts.length < 2 || opts.length > 4) throw new Error('options_count_invalid');
-      if (opts.filter(o => o.is_correct).length !== 1) throw new Error('exactly_one_correct_required');
       questions.setOptions(req.params.id, opts);
     }
     res.json({ ok: true });
@@ -182,6 +181,14 @@ router.delete('/api/question/:id', (req, res) => {
   const existing = questions.byId(req.params.id);
   if (!existing || existing.quiz_id !== q.id) return res.status(404).json({ error: 'not_found' });
   questions.remove(req.params.id);
+  res.json({ ok: true });
+});
+
+router.delete('/api/quiz', (req, res) => {
+  const q = requireQuizByToken(req, res); if (!q) return;
+  // ON DELETE CASCADE on schema removes all questions, games, players, answers, faces
+  const { getDb } = require('../db');
+  getDb().prepare('DELETE FROM quizzes WHERE id = ?').run(q.id);
   res.json({ ok: true });
 });
 

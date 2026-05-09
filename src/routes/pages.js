@@ -9,5 +9,6 @@ router.get('/display/:code', (_req, res) => res.sendFile(path.join(__dirname, '.
 router.get('/play/', (_req, res) => res.sendFile(path.join(__dirname, '..', '..', 'public', 'play', 'index.html')));
 router.get('/play/:code', (_req, res) => res.sendFile(path.join(__dirname, '..', '..', 'public', 'play', 'index.html')));
 router.get('/join/:code', (_req, res) => res.sendFile(path.join(__dirname, '..', '..', 'public', 'join', 'index.html')));
+router.get('/present/:token', (_req, res) => res.sendFile(path.join(__dirname, '..', '..', 'public', 'present', 'index.html')));
 
 module.exports = router;

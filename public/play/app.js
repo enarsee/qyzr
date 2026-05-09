@@ -178,34 +178,37 @@
 
   function renderRevealMine() {
     const r = lastReveal;
-    const correct = r && lastAnswerOptionId === r.correct_option_id;
-    const me = r ? r.leaderboard.find(p => p.id === myPlayerId) : null;
-    const rank = me ? r.leaderboard.findIndex(p => p.id === myPlayerId) + 1 : null;
-    const sc = r ? r.side_scores : { bride: 0, groom: 0 };
+    if (!r) return;
+    const cur = state.current_question || {};
+    const distMap = Object.fromEntries((r.distribution || []).map(d => [d.option_id, d.n]));
+    const total = Object.values(distMap).reduce((a,b) => a+b, 0) || 1;
+    let popularId = null, popularN = 0;
+    for (const [id, n] of Object.entries(distMap)) {
+      if (n > popularN) { popularN = n; popularId = id; }
+    }
+    const myOption = (cur.options || []).find(o => o.id === lastAnswerOptionId);
+    const popOption = (cur.options || []).find(o => o.id === popularId);
+    const myVotes = distMap[lastAnswerOptionId] || 0;
+    const myPct = Math.round((myVotes / total) * 100);
+    const popPct = Math.round((popularN / total) * 100);
+    const isAlsoPopular = lastAnswerOptionId && lastAnswerOptionId === popularId;
+
     root.innerHTML = `
-      <div style="text-align:center; padding-top: 32px;">
-        <div style="color: ${correct ? 'var(--success)' : 'var(--error)'};">${correct ? WQ_ICONS.checkCircle : WQ_ICONS.xCircle}</div>
-        <h2 style="margin: 16px 0;">${correct ? 'Correct! +1' : 'Not quite'}</h2>
-        ${me ? `<p class="font-ui">You're #${rank} with ${me.score} ${me.score === 1 ? 'point' : 'points'}</p>` : ''}
-        <p class="font-ui" style="color: var(--muted);">${escapeHtml(quiz.bride_label)} ${sc.bride} · ${escapeHtml(quiz.groom_label)} ${sc.groom}</p>
+      <div style="text-align:center; padding-top: 24px;">
+        <p class="font-ui" style="color: var(--muted); font-size: 14px; margin: 0;">You voted</p>
+        <h2 style="margin: 8px 0 24px;">${myOption ? escapeHtml(myOption.text) : '—'}</h2>
+        ${myOption ? `<p class="font-ui" style="color: var(--muted);">${myPct}% of guests agreed (${myVotes} of ${total})</p>` : ''}
+        ${isAlsoPopular
+          ? `<p class="font-ui" style="margin-top:24px;color:var(--gold);font-weight:600;">★ Most popular answer</p>`
+          : popOption ? `<p class="font-ui" style="margin-top:24px;color:var(--muted);">Most popular: <strong style="color:var(--ink);">${escapeHtml(popOption.text)}</strong> (${popPct}%)</p>` : ''}
       </div>
     `;
   }
 
   function renderFinished() {
-    const r = lastReveal || {};
-    const top = (r.leaderboard || []).slice(0, 3);
-    const sc = r.side_scores || { bride: 0, groom: 0 };
-    const winner = sc.bride > sc.groom ? quiz.bride_label : sc.groom > sc.bride ? quiz.groom_label : 'Tie';
     root.innerHTML = `
-      <h1 class="font-script" style="font-size:48px; color: var(--rose); text-align:center; margin: 24px 0;">Thanks for playing!</h1>
-      <div class="card">
-        <h3>Top 3</h3>
-        <ol>${top.map(p => `<li><strong>${escapeHtml(p.name)}</strong> · ${p.score}</li>`).join('')}</ol>
-      </div>
-      <div class="card">
-        <strong>Winner:</strong> ${escapeHtml(winner)} (${sc.bride}–${sc.groom})
-      </div>
+      <h1 class="font-script" style="font-size:48px; color: var(--rose); text-align:center; margin: 24px 0;">Thanks for voting!</h1>
+      <p style="text-align:center;color:var(--muted);">The host has ended the poll.</p>
     `;
   }
 

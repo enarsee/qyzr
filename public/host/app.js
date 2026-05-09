@@ -20,6 +20,11 @@
       joinBtn.href = `/join/${quiz.room_code}`;
       joinBtn.style.display = '';
     }
+    const presenterBtn = document.getElementById('presenterBtn');
+    if (presenterBtn) {
+      presenterBtn.href = `/present/${token}`;
+      presenterBtn.style.display = '';
+    }
     if (!socket) connect();
     render();
   }
@@ -47,9 +52,9 @@
   }
 
   function primaryButtonLabel() {
-    if (!state || state.status === 'finished' || !state.game_id) return 'Start game';
+    if (!state || state.status === 'finished' || !state.game_id) return 'Start poll';
     if (state.status === 'lobby') return 'Show first question';
-    if (state.status === 'active') return 'Reveal answer';
+    if (state.status === 'active') return 'Reveal results';
     if (state.status === 'revealing') return 'Next question';
     return 'Start game';
   }
@@ -66,7 +71,7 @@
       <div class="layout">
         <div>
           <details class="card" style="margin-bottom: 16px;" id="brandingDetails">
-            <summary style="cursor:pointer; font-family:'Inter'; font-weight:600;">Branding &amp; couple faces</summary>
+            <summary style="cursor:pointer; font-family:'Inter'; font-weight:600;">Branding (hero image)</summary>
             <div id="brandingPanel" style="margin-top: 16px;"></div>
           </details>
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
@@ -74,6 +79,9 @@
             <button class="btn btn-primary" id="addQ">${WQ_ICONS.plus} Add</button>
           </div>
           <div class="qlist" id="qlist"></div>
+          <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #E3D9CC;">
+            <button class="btn" id="deleteQuizBtn" style="color: var(--error); background: transparent; box-shadow: none;">${WQ_ICONS.trash} Delete this quiz permanently</button>
+          </div>
         </div>
         <div class="editor card">
           <h3 style="margin:0 0 16px;">Editor</h3>
@@ -84,6 +92,20 @@
     renderQuestionList();
     renderBrandingPanel();
     document.getElementById('addQ').onclick = () => openEditor(null);
+    document.getElementById('deleteQuizBtn').onclick = async () => {
+      const confirmText = `Delete "${quiz.name}" forever? This wipes all questions, players and answers.`;
+      if (!confirm(confirmText)) return;
+      const second = prompt('Type the quiz name to confirm:');
+      if (second !== quiz.name) { alert('Name did not match. Aborted.'); return; }
+      const r = await fetch(`/api/quiz?token=${token}`, { method: 'DELETE' });
+      if (!r.ok) { alert('Delete failed.'); return; }
+      // Clean local creator-url cache too
+      const list = JSON.parse(localStorage.getItem('wq_creator_urls') || '[]')
+        .filter(x => !x.host_url.endsWith('/host/' + token));
+      localStorage.setItem('wq_creator_urls', JSON.stringify(list));
+      alert('Quiz deleted.');
+      location.href = '/';
+    };
   }
 
   function renderQuestionList() {
@@ -112,16 +134,9 @@
     editor.innerHTML = `
       <h3 style="margin:0 0 16px;">${q ? 'Edit question' : 'New question'}</h3>
       <label>Question text<textarea id="qtext" maxlength="300" rows="3">${q ? escapeHtml(q.text) : ''}</textarea></label>
-      <label>Side tag
-        <select id="qside">
-          <option value="bride" ${q?.side_tag==='bride'?'selected':''}>${escapeHtml(quiz.bride_label)}</option>
-          <option value="groom" ${q?.side_tag==='groom'?'selected':''}>${escapeHtml(quiz.groom_label)}</option>
-          <option value="neutral" ${q?.side_tag==='neutral'?'selected':''}>Neutral</option>
-        </select>
-      </label>
       <label>Image (optional)<input type="file" id="qimg" accept="image/*"></label>
       <div style="margin-top:8px;">${q?.image_path ? `<img src="${q.image_path}" style="max-width:100%;border-radius:8px;">` : ''}</div>
-      <h4 style="margin:16px 0 8px;">Options (one correct)</h4>
+      <h4 style="margin:16px 0 8px;">Options</h4>
       <div id="opts"></div>
       <div style="display:flex; gap:8px; margin-top: 16px;">
         <button class="btn btn-primary" id="saveQ">${q ? 'Save' : 'Add'}</button>
@@ -129,14 +144,11 @@
       </div>
     `;
     const optsDiv = document.getElementById('opts');
-    let optsState = opts.map(o => ({ text: o.text || '', is_correct: !!o.is_correct }));
+    let optsState = opts.map(o => ({ text: o.text || '' }));
     function renderOpts(arr) {
       optsDiv.innerHTML = arr.map((o, i) => `
         <div style="display:flex; gap:8px; margin-bottom:8px;">
           <input type="text" value="${escapeHtml(o.text || '')}" data-i="${i}" maxlength="120" placeholder="Option ${i+1}">
-          <label style="display:flex; align-items:center; gap:4px; font-family:'Inter'; font-size:14px;">
-            <input type="radio" name="correct" data-i="${i}" ${o.is_correct?'checked':''}> correct
-          </label>
         </div>
       `).join('') + (arr.length < 4 ? '<button class="btn" id="addOpt">+ Add option</button>' : '');
       const addBtn = document.getElementById('addOpt');
@@ -145,13 +157,8 @@
     renderOpts(optsState);
     document.getElementById('saveQ').onclick = async () => {
       const inputs = optsDiv.querySelectorAll('input[type="text"]');
-      const radios = optsDiv.querySelectorAll('input[type="radio"]');
-      optsState = Array.from(inputs).map((el, i) => ({
-        text: el.value, is_correct: !!radios[i] && radios[i].checked
-      })).filter(o => o.text.trim());
-      if (optsState.filter(o => o.is_correct).length !== 1) {
-        alert('Mark exactly one option correct.'); return;
-      }
+      optsState = Array.from(inputs).map(el => ({ text: el.value })).filter(o => o.text.trim());
+      if (optsState.length < 2) { alert('At least 2 options required.'); return; }
       let image_path = q?.image_path || null;
       const file = document.getElementById('qimg').files[0];
       if (file) {
@@ -161,7 +168,6 @@
       }
       const body = {
         text: document.getElementById('qtext').value,
-        side_tag: document.getElementById('qside').value,
         image_path,
         options: optsState
       };
@@ -213,7 +219,7 @@
             <h2 style="margin:0 0 16px;">${escapeHtml(cur.text)}</h2>
             ${cur.image_url ? `<img src="${cur.image_url}" style="max-width:100%; border-radius:12px; margin-bottom:12px;">` : ''}
             <ol style="padding-left: 20px;">
-              ${cur.options.map(o => `<li><strong>${escapeHtml(o.text)}</strong>${o.is_correct ? ' ✓' : ''}</li>`).join('')}
+              ${cur.options.map(o => `<li><strong>${escapeHtml(o.text)}</strong></li>`).join('')}
             </ol>
             <p id="answeredCounter" class="tabular" style="font-family:'Inter'; color: var(--muted);">0 / ${state.players.length} answered</p>
           </div>
@@ -237,32 +243,10 @@
 
     panel.innerHTML = `
       <h4 style="margin: 0 0 8px;">Hero image</h4>
+      <p style="color: var(--muted); font-size: 14px; margin: 0 0 12px;">Shown on the lobby and joining pages.</p>
       <div style="display:flex; gap: 12px; align-items: center; margin-bottom: 16px;">
         ${quiz.hero_image_path ? `<img src="${quiz.hero_image_path}" style="width: 120px; height: 80px; object-fit: cover; border-radius: 8px;">` : '<div style="width:120px;height:80px;background:var(--bg);border-radius:8px;"></div>'}
         <input type="file" id="heroFile" accept="image/*">
-      </div>
-
-      <h4 style="margin: 16px 0 8px;">Couple faces <span style="font-family:'Inter';font-size:12px;color:var(--muted);font-weight:400;">— optional</span></h4>
-      <p style="color: var(--muted); font-size: 14px; margin: 0 0 12px;">Upload a photo for each mood, or leave them — the display will use cartoon defaults (shown below).</p>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-        ${['bride','groom'].map(side => `
-          <div>
-            <strong>${escapeHtml(side === 'bride' ? quiz.bride_label : quiz.groom_label)}</strong>
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
-              ${FACE_STATES.map(st => {
-                const custom = facesByKey[`${side}:${st}`];
-                const src = custom || `/defaults/${side}-${st}.svg`;
-                return `
-                <div style="text-align: center;">
-                  <div style="font-family:'Inter';font-size:12px;color:var(--muted);">${st}</div>
-                  <img src="${src}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;background:${custom ? 'transparent' : 'var(--bg)'};${custom ? '' : 'opacity:0.85;'}">
-                  ${!custom ? `<div style="font-family:'Inter';font-size:10px;color:var(--muted);">default</div>` : ''}
-                  <input type="file" accept="image/*" data-side="${side}" data-state="${st}" style="font-size:11px; margin-top:4px;">
-                </div>
-              `}).join('')}
-            </div>
-          </div>
-        `).join('')}
       </div>
       <p id="faceMsg" style="color: var(--success); margin-top: 12px; min-height: 18px; font-family: 'Inter';"></p>
     `;
@@ -281,23 +265,6 @@
       await loadQuiz();
     });
 
-    panel.querySelectorAll('input[type="file"][data-side]').forEach(input => {
-      input.addEventListener('change', async (e) => {
-        const f = e.target.files[0]; if (!f) return;
-        const side = e.target.dataset.side, state = e.target.dataset.state;
-        const fd = new FormData(); fd.append('image', f);
-        const up = await fetch('/api/upload', { method: 'POST', body: fd });
-        if (!up.ok) { document.getElementById('faceMsg').textContent = 'Upload failed'; return; }
-        const { path } = await up.json();
-        const r = await fetch(`/api/quiz/${token}/face`, {
-          method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ side, state, image_path: path })
-        });
-        if (!r.ok) { document.getElementById('faceMsg').textContent = 'Save failed'; return; }
-        document.getElementById('faceMsg').textContent = `Saved ${side} · ${state}`;
-        await loadQuiz();
-      });
-    });
   }
 
   function facesComplete() {

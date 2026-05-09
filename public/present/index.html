@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Presenter · Wedding Quiz</title>
+  <link rel="stylesheet" href="/shared/styles.css">
+  <style>
+    body { font-size: 22px; overflow: hidden; }
+
+    /* Host overlay corners */
+    .hint { position: fixed; z-index: 50; font-family: 'Inter', system-ui, sans-serif; font-size: 13px; font-weight: 500; color: var(--ink); padding: 6px 12px; background: rgba(255,255,255,0.85); border-radius: 8px; box-shadow: var(--shadow-sm); transition: opacity 400ms ease-out; pointer-events: none; }
+    .hint.tl { top: 12px; left: 12px; }
+    .hint.tr { top: 12px; right: 12px; }
+    .hint.dim { opacity: 0.05; }
+
+    .stage { min-height: 100dvh; padding: 32px; display: grid; }
+
+    /* ── Lobby ───────────────────────────────────── */
+    .lobby { grid-template-columns: 3fr 2fr; gap: 32px; align-items: center; }
+    @media (max-width: 1100px) { .lobby { grid-template-columns: 1fr; } }
+    .lobby-hero { display: grid; gap: 16px; align-content: center; text-align: center; }
+    .lobby-hero img { width: 100%; max-width: 720px; max-height: 60vh; object-fit: cover; border-radius: var(--radius-lg); box-shadow: var(--shadow-md); margin: 0 auto; }
+    .lobby-hero h1 { font-family: 'Great Vibes', cursive; font-size: clamp(72px, 9vw, 144px); margin: 0; line-height: 1; }
+    .qr-card { background: var(--surface); padding: 36px; border-radius: var(--radius-lg); box-shadow: var(--shadow-md); display: grid; gap: 16px; place-items: center; position: relative; }
+    .qr-card::before { content: ''; position: absolute; inset: -4px; border-radius: calc(var(--radius-lg) + 4px); border: 2px solid var(--gold); opacity: 0.15; animation: pulse 2.4s ease-in-out infinite; pointer-events: none; }
+    @keyframes pulse { 0%,100% { opacity: 0.08 } 50% { opacity: 0.28 } }
+    .qr-card svg { width: min(46vh, 440px); height: min(46vh, 440px); }
+    .qr-url { font-family: 'Inter'; font-weight: 600; font-size: 22px; }
+    .qr-code-big { font-family: 'Inter'; font-weight: 700; font-size: clamp(48px, 6vw, 88px); letter-spacing: 0.1em; color: var(--rose); }
+    .ticker { position: fixed; bottom: 16px; left: 0; right: 0; text-align: center; font-family: 'Inter'; font-size: 18px; color: var(--muted); white-space: nowrap; overflow: hidden; pointer-events: none; }
+    .ticker span { display: inline-block; padding: 0 24px; }
+
+    /* ── Question / Reveal shared ────────────────── */
+    .qstage { grid-template-rows: auto 1fr auto; gap: 24px; align-content: stretch; }
+    .qtext-wrap { display: grid; gap: 24px; align-items: center; }
+    .qtext-wrap.with-image { grid-template-columns: 1fr 1fr; }
+    .qtext { font-family: 'Cormorant Infant', Georgia, serif; font-size: clamp(48px, 5.5vw, 80px); font-weight: 600; line-height: 1.15; margin: 0; }
+    .qimg { width: 100%; max-height: 40vh; object-fit: contain; border-radius: var(--radius-md); }
+    .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .opt { position: relative; overflow: hidden; background: var(--surface); border-radius: var(--radius-md); box-shadow: var(--shadow-md); padding: 28px 32px; min-height: 18vh; display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; transition: transform 250ms ease-out, opacity 250ms ease-out, box-shadow 300ms ease-out, background 300ms ease-out; }
+    .opt-letter { font-family: 'Inter'; font-weight: 700; font-size: clamp(36px, 4vw, 56px); color: var(--muted); }
+    .opt-text { font-family: 'Cormorant Infant', serif; font-size: clamp(28px, 3vw, 40px); }
+    .opt-vote-fill { position: absolute; inset: 0 0 0 0; background: var(--rose); opacity: 0.18; transform-origin: bottom; transform: scaleY(0); transition: transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1), background 600ms ease-out, opacity 600ms ease-out; pointer-events: none; }
+    .opt-vote-fill.consensus { background: var(--gold); opacity: 0.36; }
+    .opt-count { position: absolute; bottom: 12px; right: 16px; font-family: 'Inter'; font-weight: 600; color: var(--ink); font-size: 14px; opacity: 0; transition: opacity 200ms ease-out; }
+    .opt.correct { background: #FFF8E1; transform: scale(1.04); box-shadow: 0 0 60px rgba(184,137,58,0.35), var(--shadow-md); }
+    .opt .opt-count { opacity: 1; }
+    .opt.correct::after { content: '★'; position: absolute; top: 12px; right: 16px; font-family: 'Inter'; font-weight: 700; font-size: 28px; color: var(--gold); }
+
+    .qprogress { display: flex; gap: 8px; align-items: center; justify-content: center; }
+    .qprogress .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--bg); border: 1px solid #E3D9CC; transition: background 300ms ease-out; }
+    .qprogress .dot.fill { background: var(--gold); border-color: var(--gold); }
+    .qprogress .count { font-family: 'Inter'; font-weight: 600; color: var(--muted); margin-left: 12px; font-variant-numeric: tabular-nums; }
+
+    /* ── Reveal blocks ──────────────────────────── */
+    .reveal-extra { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .lb { background: var(--surface); padding: 18px 22px; border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
+    .lb h3 { margin: 0 0 8px; font-family: 'Inter'; font-size: 16px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .lb ol { margin: 0; padding-left: 24px; font-family: 'Cormorant Infant', serif; font-size: 22px; }
+    .lb li { padding: 4px 0; }
+    .vs { display: grid; grid-template-columns: 1fr 200px 1fr; gap: 24px; align-items: center; padding: 24px 32px; background: var(--surface); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
+    .vs.neutral-faded { opacity: 0.85; }
+    .vs-side { text-align: center; }
+    .vs-face { width: clamp(120px, 18vw, 180px); height: clamp(120px, 18vw, 180px); border-radius: 50%; object-fit: cover; transition: opacity 250ms ease-out, box-shadow 400ms ease-out; }
+    .vs-face.winner-glow { box-shadow: 0 0 40px var(--gold); }
+    .vs-name { font-family: 'Inter'; font-weight: 600; margin-top: 10px; font-size: 22px; }
+    .vs-bar { height: 14px; background: var(--bg); border-radius: 7px; overflow: hidden; }
+    .vs-bar-fill { height: 100%; background: linear-gradient(to right, var(--bride), var(--groom)); transition: width 500ms ease-out; }
+    .vs-neutral-label { text-align: center; font-family: 'Inter'; font-size: 13px; color: var(--muted); margin-top: 8px; grid-column: 1 / -1; }
+
+    /* Cascade entrance */
+    .enter { animation: enter 350ms ease-out both; }
+    .enter-2 { animation: enter 350ms ease-out 120ms both; }
+    .enter-3 { animation: enter 400ms ease-out 250ms both; }
+    @keyframes enter { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div id="hintTL" class="hint tl"></div>
+  <div id="hintTR" class="hint tr"></div>
+  <main id="root" class="stage" aria-live="polite">
+    <p style="text-align:center; padding-top:120px;">Loading…</p>
+  </main>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/shared/socket.js"></script>
+  <script src="/present/app.js"></script>
+</body>
+</html>

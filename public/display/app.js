@@ -89,50 +89,29 @@
     const letters = ['A','B','C','D'];
     const totalVotes = r.distribution.reduce((a, b) => a + b.n, 0) || 1;
     const distMap = Object.fromEntries(r.distribution.map(d => [d.option_id, d.n]));
-    const top5 = (r.leaderboard || []).slice(0, 5);
-    const tables = (r.table_leaderboard || []).slice(0, 5);
-    const ss = r.side_states || { bride: 'neutral', groom: 'neutral' };
-    const sc = r.side_scores || { bride: 0, groom: 0 };
-    const sideTotal = Math.max(sc.bride + sc.groom, 1);
-    const bridePct = (sc.bride / sideTotal) * 100;
+    // Most-voted option becomes the "popular" highlight (poll mode)
+    let popularId = null, popularN = 0;
+    for (const [id, n] of Object.entries(distMap)) {
+      if (n > popularN) { popularN = n; popularId = id; }
+    }
     root.innerHTML = `
       <div class="display-shell">
         <h1 class="question-text">${escapeHtml(cur.text)}</h1>
         <div class="options-grid">
           ${cur.options.map((o, i) => {
-            const correct = o.id === r.correct_option_id;
-            const pct = ((distMap[o.id] || 0) / totalVotes) * 100;
+            const isPopular = popularN > 0 && o.id === popularId;
+            const pct = Math.round(((distMap[o.id] || 0) / totalVotes) * 100);
+            const votes = distMap[o.id] || 0;
             return `
-              <div class="option-card ${correct ? 'correct' : 'wrong'}">
+              <div class="option-card ${isPopular ? 'correct' : ''}">
                 <span class="option-letter">${letters[i]}</span>
                 <div class="option-text">${escapeHtml(o.text)}</div>
+                <div style="position:absolute;bottom:12px;right:16px;font-family:'Inter';font-weight:600;color:var(--ink);">${pct}% · ${votes}</div>
                 <div class="vote-bar" style="height: ${pct}%"></div>
               </div>`;
           }).join('')}
         </div>
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 24px;">
-          <div class="leaderboard">
-            <h3>Top players</h3>
-            <ol>${top5.map(p => `<li><strong>${escapeHtml(p.name)}</strong> · ${p.score}</li>`).join('')}</ol>
-          </div>
-          <div class="leaderboard">
-            <h3>Top ${escapeHtml(quiz.group_label || 'Tables')}</h3>
-            <ol>${tables.map(t => `<li>${escapeHtml(t.group_value)} · ${t.score}</li>`).join('')}</ol>
-          </div>
-        </div>
-        <div class="vs-panel">
-          <div style="text-align:center;">
-            ${ss.bride === 'winner' ? `<div style="color:gold;">${WQ_ICONS.crown}</div>` : ''}
-            <img class="vs-face ${ss.bride === 'winner' ? 'winner-glow' : ''}" src="${faceUrl('bride', ss.bride)}" alt="">
-            <div style="font-family:'Inter';font-weight:600;margin-top:8px;">${escapeHtml(quiz.bride_label)} · ${sc.bride}</div>
-          </div>
-          <div class="vs-bar"><div class="vs-bar-fill" style="width: ${bridePct}%;"></div></div>
-          <div style="text-align:center;">
-            ${ss.groom === 'winner' ? `<div style="color:gold;">${WQ_ICONS.crown}</div>` : ''}
-            <img class="vs-face ${ss.groom === 'winner' ? 'winner-glow' : ''}" src="${faceUrl('groom', ss.groom)}" alt="">
-            <div style="font-family:'Inter';font-weight:600;margin-top:8px;">${escapeHtml(quiz.groom_label)} · ${sc.groom}</div>
-          </div>
-        </div>
+        <p style="text-align:center;font-family:'Inter';color:var(--muted);font-size:18px;margin-top:8px;">${popularN} of ${totalVotes} ${totalVotes === 1 ? 'vote' : 'votes'} for the most popular answer</p>
       </div>
     `;
   }
