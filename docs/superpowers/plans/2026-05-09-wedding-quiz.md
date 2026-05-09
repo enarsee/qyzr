@@ -136,7 +136,8 @@ test-results/
 module.exports = {
   testEnvironment: 'node',
   testMatch: ['<rootDir>/tests/**/*.test.js'],
-  setupFilesAfterEach: ['<rootDir>/tests/setup.js'],
+  testPathIgnorePatterns: ['/node_modules/', '/tests/e2e/'],
+  setupFiles: ['<rootDir>/tests/setup.js'],
   collectCoverageFrom: ['src/**/*.js', '!src/server.js'],
   testTimeout: 10000
 };
@@ -861,7 +862,8 @@ function create({ game_id, name, group_value }) {
     getDb().prepare('INSERT INTO players (id, game_id, player_token, name, group_value, joined_at) VALUES (?,?,?,?,?,?)')
       .run(id, game_id, token, name, group_value, Date.now());
   } catch (e) {
-    if (String(e.message).includes('UNIQUE') && String(e.message).includes('players.name')) {
+    // better-sqlite3 sets `code` on constraint errors.
+    if (e.code === 'SQLITE_CONSTRAINT_UNIQUE' && /players\.name|game_id, players\.name/.test(e.message)) {
       const err = new Error('name_taken'); err.code = 'name_taken'; throw err;
     }
     throw e;
@@ -901,7 +903,7 @@ function record({ game_id, question_id, player_id, option_id, correct }) {
       .run(randomUUID(), game_id, question_id, player_id, option_id, correct ? 1 : 0, Date.now());
     return { recorded: true };
   } catch (e) {
-    if (String(e.message).includes('UNIQUE')) return { recorded: false, reason: 'duplicate' };
+    if (e.code === 'SQLITE_CONSTRAINT_UNIQUE') return { recorded: false, reason: 'duplicate' };
     throw e;
   }
 }
@@ -1070,6 +1072,7 @@ const config = require('./config');
 
 function buildApp() {
   const app = express();
+  app.set('trust proxy', 1); // Caddy in front sets X-Forwarded-For; required for express-rate-limit
   app.use(express.json({ limit: '100kb' }));
   app.use(express.static(path.join(__dirname, '..', 'public')));
   // Routes wired in later tasks:
@@ -1297,7 +1300,11 @@ router.post('/api/quiz', (req, res) => {
     const bride_label = v.validateName(req.body.bride_label || 'Bride');
     const groom_label = v.validateName(req.body.groom_label || 'Groom');
     const group_label = v.validateName(req.body.group_label || 'Table');
-    const accent_color = (req.body.accent_color || '#C8587A').toString().slice(0, 9);
+    const accent_color = (() => {
+      const c = (req.body.accent_color || '#C8587A').toString();
+      if (!/^#[0-9a-fA-F]{6}$/.test(c)) throw new Error('accent_color_invalid');
+      return c;
+    })();
     const hero_image_path = req.body.hero_image_path || null;
 
     const creator_token = ids.creatorToken();
@@ -1540,7 +1547,10 @@ function resolveAuth(handshakeAuth) {
     let existing = null;
     if (typeof a.player_token === 'string') {
       const p = players.byToken(a.player_token);
-      if (p && p.game_id === game.id && !p.kicked) existing = p;
+      if (p && p.game_id === game.id) {
+        if (p.kicked) throw new Error('kicked'); // hard-reject per spec §11
+        existing = p;
+      }
     }
     return { role: 'player', quiz_id: quiz.id, game_id: game.id, existing_player: existing };
   }
@@ -1718,7 +1728,7 @@ function getTotal(game_id, question_id) {
   return totalsByQuestion.get(`${game_id}:${question_id}`) ?? players.listByGame(game_id).length;
 }
 
-function buildStatePayload({ game_id, role, includeCorrect }) {
+function buildStatePayload({ game_id, includeCorrect }) {
   const game = games.byId(game_id);
   if (!game) return null;
   const quiz = quizzes.byId(game.quiz_id);
@@ -1830,7 +1840,9 @@ function register(io, socket) {
     if (rejectIfStaleGame(socket, game_id)) return;
     const game = games.byId(game_id);
     if (!game) { socket.emit('error', { code: 'no_game' }); return; }
-    if (!['lobby','revealing','active'].includes(game.status)) { socket.emit('error', { code: 'bad_state' }); return; }
+    // Per spec §6: host:next is valid only from lobby or revealing.
+    // Calling it from active (skip-without-reveal) is intentionally not implemented in v1.
+    if (!['lobby','revealing'].includes(game.status)) { socket.emit('error', { code: 'bad_state' }); return; }
 
     const next = questions.nextAfter(game.quiz_id, game.current_question_id);
     if (!next) {
@@ -2271,16 +2283,14 @@ test('kicked player gets player:kicked + disconnected, cannot rejoin', async () 
   await disconnectP;
   expect(playersRepo.byId(j.player_id).kicked).toBe(1);
 
-  // Reconnect with same token -> auth rejects (kicked)
+  // Reconnect with same token -> auth hard-rejects (kicked) per spec §11
   await expect(connect(s.url, { role: 'player', room_code: rc, player_token: j.player_token }))
-    .resolves.toBeTruthy(); // connection succeeds...
-  // ...but as a fresh joiner; existing_player is null because kicked. Verify they must rejoin under a NEW name.
-  // (Optional follow-up: make auth reject kicked tokens hard. For v1, fresh-join is acceptable.)
+    .rejects.toThrow(/kicked/);
   host.close();
 });
 ```
 
-> Note: in `auth.js` the kicked-rejection is implemented (`!p.kicked` filter); a kicked player connecting with their token simply enters as if fresh — they must `player:join` again, which will fail on duplicate name unless the host has also deleted the player row (out of scope). Document this in `DEPLOY.md`.
+> Note: `auth.js` hard-rejects kicked tokens with `Error('kicked')` per spec §11. A kicked player who connects with their stored token gets a `connect_error('kicked')` in the player UI; they must clear localStorage (or use a different device) and rejoin under a different name (the original name remains unique-locked on the kicked row by design).
 
 - [ ] **Step 2: Run + commit**
 
@@ -2543,6 +2553,8 @@ This is a single form posting to `/api/quiz`. After success, redirect to `/host/
       <label>"Groom" label <input name="groom_label" maxlength="30" value="Groom"></label>
       <label>Group label (e.g. Table) <input name="group_label" maxlength="30" value="Table"></label>
       <label>Accent color <input name="accent_color" type="color" value="#C8587A"></label>
+      <label>Hero image (optional) <input name="hero_image" type="file" accept="image/*"></label>
+      <p style="color: var(--muted); font-size: 14px; margin: 0;">You'll upload couple "mood" face images on the next page.</p>
       <button class="btn btn-primary" type="submit">Create quiz</button>
       <p id="err" style="color: var(--error); margin: 0;"></p>
     </form>
@@ -2558,7 +2570,21 @@ This is a single form posting to `/api/quiz`. After success, redirect to `/host/
 document.getElementById('form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
+  const heroFile = fd.get('hero_image');
+  fd.delete('hero_image');
   const body = Object.fromEntries(fd.entries());
+
+  // Upload hero image first (if provided), then create quiz with the resulting path.
+  if (heroFile && heroFile.size > 0) {
+    const heroFd = new FormData(); heroFd.append('image', heroFile);
+    const up = await fetch('/api/upload', { method: 'POST', body: heroFd });
+    if (!up.ok) {
+      document.getElementById('err').textContent = 'Hero image upload failed';
+      return;
+    }
+    body.hero_image_path = (await up.json()).path;
+  }
+
   const res = await fetch('/api/quiz', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -2642,7 +2668,7 @@ This is the most complex page. Two modes: **edit** (when no game active) and **g
       <button class="btn btn-primary" id="primaryBtn">Start game</button>
     </div>
   </div>
-  <div id="root">
+  <div id="root" aria-live="polite">
     <p style="text-align:center; padding: 80px;">Loading…</p>
   </div>
   <script src="/socket.io/socket.io.js"></script>
@@ -2892,6 +2918,167 @@ git add public/host
 git commit -m "feat: host page with edit mode and game-mode control deck"
 ```
 
+### Task 6.4: Face-image manager + hero image edit on `/host`
+
+The display page renders the Bride-vs-Groom panel by reading `quiz.faces` (5 mood states × 2 sides = 10 images per quiz, per spec §3 + §7). `/create` does not collect these because users don't have URLs at creation time; the host page is the right place. This task adds a "Couple faces" panel to the host edit mode.
+
+**Files:**
+- Update: `public/host/index.html` (small additions), `public/host/app.js` (new `renderFacesPanel` + branding form)
+
+- [ ] **Step 1: Extend `renderEdit` in `public/host/app.js`** to include a Branding section above Questions:
+
+```js
+function renderEdit() {
+  root.innerHTML = `
+    <div class="layout">
+      <div>
+        <details class="card" style="margin-bottom: 16px;" id="brandingDetails">
+          <summary style="cursor:pointer; font-family:'Inter'; font-weight:600;">Branding & couple faces</summary>
+          <div id="brandingPanel" style="margin-top: 16px;"></div>
+        </details>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <h2 style="margin:0;">Questions</h2>
+          <button class="btn btn-primary" id="addQ">${WQ_ICONS.plus} Add</button>
+        </div>
+        <div class="qlist" id="qlist"></div>
+      </div>
+      <div class="editor card">
+        <h3 style="margin:0 0 16px;">Editor</h3>
+        <p style="color: var(--muted);">Select a question on the left or add a new one.</p>
+      </div>
+    </div>
+  `;
+  renderBrandingPanel();
+  renderQuestionList();
+  document.getElementById('addQ').onclick = () => openEditor(null);
+}
+
+function renderQuestionList() {
+  const list = document.getElementById('qlist');
+  list.innerHTML = '';
+  quiz.questions.forEach(q => {
+    const div = document.createElement('div');
+    div.className = 'qrow';
+    div.draggable = true;
+    div.dataset.id = q.id;
+    div.innerHTML = `
+      <strong style="font-family:'Inter';color:var(--muted);">${q.position}.</strong>
+      <span style="flex:1;">${escapeHtml(q.text || '(untitled)')}</span>
+      <span class="player-pill">${q.side_tag}</span>
+    `;
+    div.addEventListener('click', () => openEditor(q.id));
+    addDragHandlers(div, list);
+    list.appendChild(div);
+  });
+}
+
+const FACE_STATES = ['winner','happy','neutral','sad','angry'];
+
+function renderBrandingPanel() {
+  const panel = document.getElementById('brandingPanel');
+  const facesByKey = {};
+  for (const f of (quiz.faces || [])) facesByKey[`${f.side}:${f.state}`] = f.image_path;
+
+  panel.innerHTML = `
+    <h4 style="margin: 0 0 8px;">Hero image</h4>
+    <div style="display:flex; gap: 12px; align-items: center; margin-bottom: 16px;">
+      ${quiz.hero_image_path ? `<img src="${quiz.hero_image_path}" style="width: 120px; height: 80px; object-fit: cover; border-radius: 8px;">` : '<div style="width:120px;height:80px;background:var(--bg);border-radius:8px;"></div>'}
+      <input type="file" id="heroFile" accept="image/*">
+    </div>
+
+    <h4 style="margin: 16px 0 8px;">Couple faces</h4>
+    <p style="color: var(--muted); font-size: 14px; margin: 0 0 12px;">Upload a photo for each mood. Required: ${FACE_STATES.length} per side. The display screen swaps faces based on the score.</p>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+      ${['bride','groom'].map(side => `
+        <div>
+          <strong>${escapeHtml(side === 'bride' ? quiz.bride_label : quiz.groom_label)}</strong>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+            ${FACE_STATES.map(st => `
+              <div style="text-align: center;">
+                <div style="font-family:'Inter';font-size:12px;color:var(--muted);">${st}</div>
+                ${facesByKey[`${side}:${st}`]
+                  ? `<img src="${facesByKey[`${side}:${st}`]}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;">`
+                  : `<div style="width:64px;height:64px;border-radius:50%;background:var(--bg);margin:0 auto;"></div>`}
+                <input type="file" accept="image/*" data-side="${side}" data-state="${st}" style="font-size:11px; margin-top:4px;">
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+    <p id="faceMsg" style="color: var(--success); margin-top: 12px; min-height: 18px; font-family: 'Inter';"></p>
+  `;
+
+  document.getElementById('heroFile').addEventListener('change', async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const fd = new FormData(); fd.append('image', f);
+    const up = await fetch('/api/upload', { method: 'POST', body: fd });
+    if (!up.ok) { document.getElementById('faceMsg').textContent = 'Upload failed'; return; }
+    const { path } = await up.json();
+    await fetch(`/api/quiz?token=${token}`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ hero_image_path: path })
+    });
+    document.getElementById('faceMsg').textContent = 'Hero image saved';
+    await loadQuiz();
+  });
+
+  panel.querySelectorAll('input[type="file"][data-side]').forEach(input => {
+    input.addEventListener('change', async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      const side = e.target.dataset.side, state = e.target.dataset.state;
+      const fd = new FormData(); fd.append('image', f);
+      const up = await fetch('/api/upload', { method: 'POST', body: fd });
+      if (!up.ok) { document.getElementById('faceMsg').textContent = 'Upload failed'; return; }
+      const { path } = await up.json();
+      const r = await fetch(`/api/quiz/${token}/face`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ side, state, image_path: path })
+      });
+      if (!r.ok) { document.getElementById('faceMsg').textContent = 'Save failed'; return; }
+      document.getElementById('faceMsg').textContent = `Saved ${side} · ${state}`;
+      await loadQuiz();
+    });
+  });
+}
+```
+
+- [ ] **Step 2: Add a readiness check** — host can't `Start game` if any face is missing. In `primaryButtonLabel()`/`onPrimary()`:
+
+```js
+function facesComplete() {
+  const haveByKey = new Set((quiz.faces || []).map(f => `${f.side}:${f.state}`));
+  for (const side of ['bride','groom'])
+    for (const st of FACE_STATES)
+      if (!haveByKey.has(`${side}:${st}`)) return false;
+  return true;
+}
+
+function primaryButtonLabel() {
+  if (!state || state.status === 'finished' || !state.game_id) {
+    return facesComplete() ? 'Start game' : 'Upload all faces first';
+  }
+  // ... existing branches unchanged
+}
+
+function onPrimary() {
+  if (!state || !state.game_id) {
+    if (!facesComplete()) { alert('Upload all 5 face images for each side before starting.'); return; }
+    socket.emit('host:start'); return;
+  }
+  // ... existing branches unchanged
+}
+```
+
+- [ ] **Step 3: Smoke test (manual)** — open `/host/<token>`, expand "Branding & couple faces", upload one face, reload, see it persist; upload all 10, then `Start game` becomes enabled.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add public/host
+git commit -m "feat: face-image and hero-image management on host edit page"
+```
+
 ---
 
 ## Chunk 7: Frontend — TV display
@@ -2937,7 +3124,7 @@ Three states: lobby, question, reveal. Big type, high contrast, no interaction. 
   </style>
 </head>
 <body>
-  <div id="root"><p style="text-align:center; padding:80px;">Loading…</p></div>
+  <div id="root" aria-live="polite"><p style="text-align:center; padding:80px;">Loading…</p></div>
   <script src="/socket.io/socket.io.js"></script>
   <script src="/shared/icons.js"></script>
   <script src="/shared/socket.js"></script>
@@ -3131,7 +3318,7 @@ Mobile-first single-column UI. Three states: join, lobby/waiting, question/revea
   </style>
 </head>
 <body>
-  <main id="root" class="stage"><p style="text-align:center; padding-top: 80px;">Loading…</p></main>
+  <main id="root" class="stage" aria-live="polite"><p style="text-align:center; padding-top: 80px;">Loading…</p></main>
   <script src="/socket.io/socket.io.js"></script>
   <script src="/shared/icons.js"></script>
   <script src="/shared/socket.js"></script>
@@ -3524,6 +3711,8 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    environment:
+      - PUBLIC_HOST=${PUBLIC_HOST}
     ports:
       - "80:80"
       - "443:443"
