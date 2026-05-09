@@ -1340,12 +1340,27 @@ router.get('/api/quiz/by-room/:code', (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+const SAFE_IMAGE_PATH = /^\/uploads\/[A-Za-z0-9_\-]+\.webp$/;
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
 router.put('/api/quiz', (req, res) => {
   const q = requireQuizByToken(req, res); if (!q) return;
   const fields = {};
-  for (const k of ['name','bride_label','groom_label','group_label','accent_color','hero_image_path']) {
-    if (req.body[k] !== undefined) fields[k] = req.body[k];
-  }
+  try {
+    if (req.body.name !== undefined) fields.name = v.validateName(req.body.name);
+    if (req.body.bride_label !== undefined) fields.bride_label = v.validateName(req.body.bride_label);
+    if (req.body.groom_label !== undefined) fields.groom_label = v.validateName(req.body.groom_label);
+    if (req.body.group_label !== undefined) fields.group_label = v.validateName(req.body.group_label);
+    if (req.body.accent_color !== undefined) {
+      if (!HEX_COLOR.test(String(req.body.accent_color))) throw new Error('accent_color_invalid');
+      fields.accent_color = req.body.accent_color;
+    }
+    if (req.body.hero_image_path !== undefined) {
+      if (req.body.hero_image_path !== null && !SAFE_IMAGE_PATH.test(String(req.body.hero_image_path)))
+        throw new Error('hero_image_path_invalid');
+      fields.hero_image_path = req.body.hero_image_path;
+    }
+  } catch (e) { return res.status(400).json({ error: e.message }); }
   quizzes.update(q.id, fields);
   res.json({ ok: true });
 });
@@ -1353,6 +1368,7 @@ router.put('/api/quiz', (req, res) => {
 router.post('/api/quiz/:token/face', (req, res) => {
   const q = requireQuizByToken(req, res); if (!q) return;
   try {
+    if (!SAFE_IMAGE_PATH.test(String(req.body.image_path || ''))) throw new Error('image_path_invalid');
     faces.upsert({ quiz_id: q.id, side: req.body.side, state: req.body.state, image_path: req.body.image_path });
     res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
