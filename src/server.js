@@ -18,7 +18,7 @@ function buildApp() {
 function start() {
   const app = buildApp();
   const server = http.createServer(app);
-  // realtime is wired later
+  require('./realtime').attach(server);
   server.listen(config.port, () => {
     console.log(`listening on ${config.publicUrl}`);
   });
