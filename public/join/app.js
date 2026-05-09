@@ -1,6 +1,7 @@
 (async function () {
   const code = location.pathname.split('/').pop();
   const root = document.getElementById('root');
+  const ticker = document.getElementById('ticker');
 
   const r = await fetch(`/api/quiz/by-room/${encodeURIComponent(code)}`);
   if (!r.ok) {
@@ -12,6 +13,19 @@
 
   const qrRes = await fetch(`/api/qr/${encodeURIComponent(code)}`);
   const qrSvg = await qrRes.text();
+
+  // Live ticker: connect as display, render joined names as they arrive.
+  try {
+    const s = WQ_connect({ role: 'display', room_code: code });
+    s.on('state', (st) => {
+      if (!ticker || !st || !Array.isArray(st.players)) return;
+      const names = st.players.map(p => p.name);
+      ticker.innerHTML = names.length
+        ? names.map(n => `<span>${escapeHtml(n)} ·</span>`).join('')
+        : '';
+    });
+    s.on('connect_error', () => { /* fine — game may not be live yet */ });
+  } catch {}
 
   root.innerHTML = `
     <div class="hero-side">

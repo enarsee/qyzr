@@ -1,3 +1,23 @@
+// Swatch ↔ color picker sync
+(function setupSwatches() {
+  const wrap = document.getElementById('swatches');
+  const picker = document.getElementById('accent_color');
+  if (!wrap || !picker) return;
+  const setSelected = (value) => {
+    wrap.querySelectorAll('.swatch').forEach(b => {
+      b.style.borderColor = b.dataset.c.toLowerCase() === value.toLowerCase() ? 'var(--ink)' : 'transparent';
+    });
+  };
+  wrap.querySelectorAll('.swatch').forEach(btn => {
+    btn.addEventListener('click', () => {
+      picker.value = btn.dataset.c;
+      setSelected(btn.dataset.c);
+    });
+  });
+  picker.addEventListener('input', () => setSelected(picker.value));
+  setSelected(picker.value);
+})();
+
 document.getElementById('form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);

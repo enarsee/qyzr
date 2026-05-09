@@ -15,7 +15,17 @@
       <label>"Bride" label <input name="bride_label" maxlength="30" value="Bride"></label>
       <label>"Groom" label <input name="groom_label" maxlength="30" value="Groom"></label>
       <label>Group label (e.g. Table) <input name="group_label" maxlength="30" value="Table"></label>
-      <label>Accent color <input name="accent_color" type="color" value="#C8587A"></label>
+      <div>
+        <label style="display:block;margin-bottom:6px;">Accent color</label>
+        <div id="swatches" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <button type="button" data-c="#C8587A" class="swatch" style="width:36px;height:36px;border-radius:50%;border:2px solid var(--ink);background:#C8587A;cursor:pointer;padding:0;" aria-label="Rose"></button>
+          <button type="button" data-c="#B8893A" class="swatch" style="width:36px;height:36px;border-radius:50%;border:2px solid transparent;background:#B8893A;cursor:pointer;padding:0;" aria-label="Gold"></button>
+          <button type="button" data-c="#3F6B7B" class="swatch" style="width:36px;height:36px;border-radius:50%;border:2px solid transparent;background:#3F6B7B;cursor:pointer;padding:0;" aria-label="Teal"></button>
+          <button type="button" data-c="#3F8A5C" class="swatch" style="width:36px;height:36px;border-radius:50%;border:2px solid transparent;background:#3F8A5C;cursor:pointer;padding:0;" aria-label="Sage"></button>
+          <button type="button" data-c="#7A4A8E" class="swatch" style="width:36px;height:36px;border-radius:50%;border:2px solid transparent;background:#7A4A8E;cursor:pointer;padding:0;" aria-label="Plum"></button>
+          <input name="accent_color" type="color" id="accent_color" value="#C8587A" style="width:48px;height:36px;padding:0;min-height:0;border-radius:6px;cursor:pointer;" aria-label="Custom accent color">
+        </div>
+      </div>
       <label>Hero image (optional) <input name="hero_image" type="file" accept="image/*"></label>
       <p style="color: var(--muted); font-size: 14px; margin: 0;">You can optionally upload couple photos on the next page (cartoon defaults are used otherwise).</p>
       <button class="btn btn-primary" type="submit">Create quiz</button>

@@ -37,17 +37,32 @@
     return 'angry';
   }
 
+  let lastServerEventAt = Date.now();
+  function bumpHeartbeat() { lastServerEventAt = Date.now(); }
+
   function connect() {
     const s = WQ_connect({ role: 'display', room_code: code });
-    s.on('state', (st) => { state = st; if (state.status === 'active') liveDistribution = {}; render(); });
-    s.on('question:show', () => { answerCount = 0; answerTotal = state?.players?.length || 0; liveDistribution = {}; lastReveal = null; render(); });
+    s.on('state', (st) => { state = st; if (state.status === 'active') liveDistribution = {}; bumpHeartbeat(); render(); });
+    s.on('question:show', () => { answerCount = 0; answerTotal = state?.players?.length || 0; liveDistribution = {}; lastReveal = null; bumpHeartbeat(); render(); });
     s.on('answer:received', ({ count, total, option_id }) => {
       answerCount = count; answerTotal = total;
       if (option_id) liveDistribution[option_id] = (liveDistribution[option_id] || 0) + 1;
+      bumpHeartbeat();
       updateLive();
     });
-    s.on('question:reveal', (r) => { lastReveal = r; render(); });
-    s.on('game:finished', (r) => { lastReveal = r; if (state) state.status = 'finished'; render(); });
+    s.on('question:reveal', (r) => { lastReveal = r; bumpHeartbeat(); render(); });
+    s.on('game:finished', (r) => { lastReveal = r; if (state) state.status = 'finished'; bumpHeartbeat(); render(); });
+    s.on('player:joined', bumpHeartbeat);
+    s.on('player:left', bumpHeartbeat);
+
+    // Idle indicator: if no server event in 30s during lobby/active, show "Waiting for host…"
+    setInterval(() => {
+      const idleMs = Date.now() - lastServerEventAt;
+      const banner = document.getElementById('idleBanner');
+      if (!banner) return;
+      const showIt = idleMs > 30000 && state && (state.status === 'lobby' || state.status === 'active');
+      banner.style.display = showIt ? 'block' : 'none';
+    }, 2000);
   }
 
   function updateLive() {

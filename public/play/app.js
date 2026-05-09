@@ -95,9 +95,14 @@
     const name = document.getElementById('name').value.trim();
     const grp = document.getElementById('grp').value.trim();
     if (!name || !grp || !code) { document.getElementById('err').textContent = 'Fill in all fields'; return; }
+
+    const joinBtn = document.getElementById('joinBtn');
+    const restoreJoin = () => { if (joinBtn) { joinBtn.disabled = false; joinBtn.textContent = 'Join'; } };
+    if (joinBtn) { joinBtn.disabled = true; joinBtn.textContent = 'Joining…'; }
+
     if (!quiz) {
       const r = await fetch(`/api/quiz/by-room/${encodeURIComponent(code)}`);
-      if (!r.ok) { document.getElementById('err').textContent = 'Room not found'; return; }
+      if (!r.ok) { document.getElementById('err').textContent = 'Room not found'; restoreJoin(); return; }
       quiz = await r.json();
     }
     if (socket) { try { socket.close(); } catch {} socket = null; }
@@ -105,6 +110,7 @@
     socket.on('connect', () => setBanner(''));
     socket.on('disconnect', () => setBanner('Reconnecting…'));
     socket.on('connect_error', (e) => {
+      restoreJoin();
       const errEl = document.getElementById('err');
       if (!errEl) return;
       if (String(e.message).includes('no_active_game')) errEl.textContent = 'Game has not started yet.';
@@ -117,6 +123,7 @@
       localStorage.setItem('wq_player_token', myPlayerToken);
     });
     socket.on('error', (e) => {
+      restoreJoin();
       const errEl = document.getElementById('err');
       if (!errEl) return;
       if (e.code === 'name_taken') errEl.textContent = 'That name is taken — pick another.';
@@ -145,8 +152,15 @@
     root.innerHTML = `
       <h1 class="font-script" style="font-size:48px; color: var(--rose); text-align:center; margin: 8px 0;">${escapeHtml(quiz.name)}</h1>
       ${quiz.hero_image_path ? `<img src="${quiz.hero_image_path}" style="width:100%; border-radius: 16px; max-height: 240px; object-fit:cover;">` : ''}
-      <p style="text-align:center; color: var(--muted);">Welcome — waiting for the host…</p>
-      <p style="text-align:center; font-family: 'Inter'; font-size: 14px; color: var(--muted);">${state.players.length} guests in the lobby</p>
+      <p style="text-align:center; color: var(--muted); margin: 16px 0 8px;">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gold);margin-right:6px;animation:wq-pulse 1.6s ease-in-out infinite;"></span>
+        Waiting for the host to start…
+      </p>
+      <p style="text-align:center; font-family: 'Inter'; font-size: 14px; color: var(--muted);">${state.players.length} guest${state.players.length === 1 ? '' : 's'} in the lobby</p>
+      <div class="card" style="margin-top: 24px; background: rgba(200,88,122,0.06); border: 1px dashed var(--rose); padding: 16px;">
+        <p style="margin:0; font-family:'Inter'; font-size: 14px; color: var(--ink);"><strong>Tip:</strong> tap an answer as soon as it appears. Have fun!</p>
+      </div>
+      <style>@keyframes wq-pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }</style>
     `;
   }
 

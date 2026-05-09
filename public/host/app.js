@@ -328,7 +328,11 @@
 
   function renderControlDeck() {
     const cur = state.current_question;
-    const playersList = state.players.map(p => `<span class="player-pill">${escapeHtml(p.name)} · ${escapeHtml(p.group_value)}</span>`).join('');
+    const PLAYER_CAP = 20;
+    const recent = state.players.slice(-PLAYER_CAP);
+    const overflow = Math.max(0, state.players.length - recent.length);
+    const playersList = recent.map(p => `<span class="player-pill">${escapeHtml(p.name)} · ${escapeHtml(p.group_value)}</span>`).join('')
+      + (overflow ? `<span class="player-pill" style="background:transparent;color:var(--muted);">and ${overflow} more</span>` : '');
     root.innerHTML = `
       <div class="control-deck">
         <p style="font-family:'Inter'; color:var(--muted);">Status: <strong>${state.status}</strong> · Q ${cur?.position || 0} / ${state.total_questions}</p>

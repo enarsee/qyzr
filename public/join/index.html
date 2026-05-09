@@ -16,6 +16,8 @@
     .qr-side svg { width: min(60vh, 480px); height: min(60vh, 480px); }
     .room-code-big { font-family: 'Inter'; font-weight: 700; font-size: 64px; letter-spacing: 0.1em; color: var(--rose); }
     .url-line { font-family: 'Inter'; font-weight: 600; font-size: 24px; color: var(--ink); }
+    .ticker { position: fixed; bottom: 16px; left: 0; right: 0; text-align: center; font-family: 'Inter'; font-size: 18px; color: var(--muted); white-space: nowrap; overflow: hidden; pointer-events: none; }
+    .ticker span { display: inline-block; padding: 0 16px; }
   </style>
 </head>
 <body>
@@ -23,7 +25,10 @@
     <div class="layout" id="root">
       <p style="text-align:center; padding-top:120px; grid-column: 1 / -1;">Loading…</p>
     </div>
+    <div class="ticker" id="ticker"></div>
   </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/shared/socket.js"></script>
   <script src="/join/app.js"></script>
 </body>
 </html>
