@@ -398,7 +398,7 @@
                 return `
                   <div style="text-align: center;">
                     <div style="font-family:'Inter';font-size:12px;color:var(--muted);">${st}</div>
-                    <img src="${src}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;background:${custom ? 'transparent' : 'var(--bg)'};${custom ? '' : 'opacity:0.85;'}">
+                    <img src="${src}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;object-position:50% 25%;background:${custom ? 'transparent' : 'var(--bg)'};${custom ? '' : 'opacity:0.85;'}">
                     ${!custom ? `<div style="font-family:'Inter';font-size:10px;color:var(--muted);">default</div>` : ''}
                     <input type="file" accept="image/*" data-side="${side}" data-state="${st}" style="font-size:11px; margin-top:4px;">
                   </div>

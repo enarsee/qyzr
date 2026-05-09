@@ -10,7 +10,13 @@ function buildApp() {
   app.use(express.json({ limit: '100kb' }));
   app.use(express.static(path.join(__dirname, '..', 'public')));
   // Rate limiters (applied before routers)
-  app.use('/api/quiz', (req, res, next) => req.method === 'POST' ? createLimiter(req, res, next) : next());
+  // NB: must scope createLimiter to the EXACT path /api/quiz, not the whole
+  // /api/quiz/* tree — otherwise question/face/reorder POSTs share the cap
+  // (10/hr) with quiz creation, and a host adding 10+ faces gets locked out.
+  app.use((req, res, next) => {
+    if (req.method === 'POST' && req.path === '/api/quiz') return createLimiter(req, res, next);
+    next();
+  });
   app.use('/play', playLimiter);
   app.use('/api/upload', uploadLimiter);
   // Routes
