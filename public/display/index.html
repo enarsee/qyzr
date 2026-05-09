@@ -1,1 +1,38 @@
-<!doctype html><meta charset="utf-8"><title>WQ</title><h1>placeholder</h1>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Display · Wedding Quiz</title>
+  <link rel="stylesheet" href="/shared/styles.css">
+  <style>
+    body { font-size: 24px; }
+    .display-shell { min-height: 100dvh; padding: 48px; display: grid; gap: 24px; }
+    .lobby { text-align: center; display: grid; place-items: center; gap: 16px; }
+    .hero-img { width: 100%; max-width: 1000px; max-height: 50vh; object-fit: cover; border-radius: var(--radius-lg); }
+    .join-card { background: var(--surface); padding: 48px; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
+    .room-code-big { font-family: 'Inter'; font-weight: 700; font-size: 96px; letter-spacing: 0.1em; color: var(--rose); }
+    .question-text { font-size: 64px; line-height: 1.2; font-weight: 600; margin: 24px 0; }
+    .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .option-card { background: var(--surface); padding: 32px; border-radius: var(--radius-md); box-shadow: var(--shadow-md); position: relative; overflow: hidden; transition: transform 250ms ease-out; }
+    .option-card .vote-bar { position: absolute; left: 0; right: 0; bottom: 0; background: var(--rose); opacity: 0.2; transition: height 250ms ease-out; }
+    .option-letter { font-family: 'Inter'; font-weight: 700; font-size: 48px; color: var(--muted); }
+    .option-text { font-size: 36px; }
+    .option-card.correct { background: #FFF8E1; box-shadow: 0 0 40px rgba(184,137,58,0.4); transform: scale(1.05); }
+    .option-card.wrong { opacity: 0.4; }
+    .leaderboard { background: var(--surface); padding: 24px; border-radius: var(--radius-md); }
+    .vs-panel { display: grid; grid-template-columns: 1fr 100px 1fr; align-items: center; gap: 16px; padding: 24px; background: var(--surface); border-radius: var(--radius-md); }
+    .vs-face { width: 200px; height: 200px; border-radius: 50%; object-fit: cover; transition: opacity 250ms ease-out; }
+    .vs-bar { height: 16px; background: var(--bg); border-radius: 8px; overflow: hidden; }
+    .vs-bar-fill { height: 100%; background: linear-gradient(to right, var(--bride), var(--groom)); }
+    .winner-glow { box-shadow: 0 0 40px var(--gold); border-radius: 50%; }
+  </style>
+</head>
+<body>
+  <div id="root" aria-live="polite"><p style="text-align:center; padding:80px;">Loading…</p></div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/shared/icons.js"></script>
+  <script src="/shared/socket.js"></script>
+  <script src="/display/app.js"></script>
+</body>
+</html>
