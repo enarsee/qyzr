@@ -3,6 +3,7 @@
   let quiz = null;
   let state = null;
   let socket = null;
+  const FACE_STATES = ['winner','happy','neutral','sad','angry'];
   const root = document.getElementById('root');
   const quizName = document.getElementById('quizName');
   const roomCode = document.getElementById('roomCode');
@@ -41,7 +42,7 @@
   }
 
   function primaryButtonLabel() {
-    if (!state || state.status === 'finished' || !state.game_id) return 'Start game';
+    if (!state || state.status === 'finished' || !state.game_id) return facesComplete() ? 'Start game' : 'Upload all faces first';
     if (state.status === 'lobby') return 'Show first question';
     if (state.status === 'active') return 'Reveal answer';
     if (state.status === 'revealing') return 'Next question';
@@ -49,7 +50,10 @@
   }
 
   function onPrimary() {
-    if (!state || !state.game_id) { socket.emit('host:start'); return; }
+    if (!state || !state.game_id) {
+      if (!facesComplete()) { alert('Upload all 5 face images for each side before starting.'); return; }
+      socket.emit('host:start'); return;
+    }
     if (state.status === 'lobby') { socket.emit('host:next', { game_id: state.game_id }); return; }
     if (state.status === 'active') { socket.emit('host:reveal', { game_id: state.game_id }); return; }
     if (state.status === 'revealing') { socket.emit('host:next', { game_id: state.game_id }); return; }
@@ -61,9 +65,7 @@
         <div>
           <details class="card" style="margin-bottom: 16px;" id="brandingDetails">
             <summary style="cursor:pointer; font-family:'Inter'; font-weight:600;">Branding &amp; couple faces</summary>
-            <div id="brandingPanel" style="margin-top: 16px;">
-              <p style="color: var(--muted); font-size: 14px;">Branding controls coming soon.</p>
-            </div>
+            <div id="brandingPanel" style="margin-top: 16px;"></div>
           </details>
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
             <h2 style="margin:0;">Questions</h2>
@@ -78,6 +80,7 @@
       </div>
     `;
     renderQuestionList();
+    renderBrandingPanel();
     document.getElementById('addQ').onclick = () => openEditor(null);
   }
 
@@ -222,6 +225,83 @@
     `;
     const fb = document.getElementById('finishBtn');
     if (fb) fb.onclick = () => { if (confirm('Finish game?')) socket.emit('host:finish', { game_id: state.game_id }); };
+  }
+
+  function renderBrandingPanel() {
+    const panel = document.getElementById('brandingPanel');
+    if (!panel) return;
+    const facesByKey = {};
+    for (const f of (quiz.faces || [])) facesByKey[`${f.side}:${f.state}`] = f.image_path;
+
+    panel.innerHTML = `
+      <h4 style="margin: 0 0 8px;">Hero image</h4>
+      <div style="display:flex; gap: 12px; align-items: center; margin-bottom: 16px;">
+        ${quiz.hero_image_path ? `<img src="${quiz.hero_image_path}" style="width: 120px; height: 80px; object-fit: cover; border-radius: 8px;">` : '<div style="width:120px;height:80px;background:var(--bg);border-radius:8px;"></div>'}
+        <input type="file" id="heroFile" accept="image/*">
+      </div>
+
+      <h4 style="margin: 16px 0 8px;">Couple faces</h4>
+      <p style="color: var(--muted); font-size: 14px; margin: 0 0 12px;">Upload a photo for each mood. Required: ${FACE_STATES.length} per side. The display screen swaps faces based on the score.</p>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        ${['bride','groom'].map(side => `
+          <div>
+            <strong>${escapeHtml(side === 'bride' ? quiz.bride_label : quiz.groom_label)}</strong>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+              ${FACE_STATES.map(st => `
+                <div style="text-align: center;">
+                  <div style="font-family:'Inter';font-size:12px;color:var(--muted);">${st}</div>
+                  ${facesByKey[`${side}:${st}`]
+                    ? `<img src="${facesByKey[`${side}:${st}`]}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;">`
+                    : `<div style="width:64px;height:64px;border-radius:50%;background:var(--bg);margin:0 auto;"></div>`}
+                  <input type="file" accept="image/*" data-side="${side}" data-state="${st}" style="font-size:11px; margin-top:4px;">
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <p id="faceMsg" style="color: var(--success); margin-top: 12px; min-height: 18px; font-family: 'Inter';"></p>
+    `;
+
+    document.getElementById('heroFile').addEventListener('change', async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      const fd = new FormData(); fd.append('image', f);
+      const up = await fetch('/api/upload', { method: 'POST', body: fd });
+      if (!up.ok) { document.getElementById('faceMsg').textContent = 'Upload failed'; return; }
+      const { path } = await up.json();
+      await fetch(`/api/quiz?token=${token}`, {
+        method: 'PUT', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ hero_image_path: path })
+      });
+      document.getElementById('faceMsg').textContent = 'Hero image saved';
+      await loadQuiz();
+    });
+
+    panel.querySelectorAll('input[type="file"][data-side]').forEach(input => {
+      input.addEventListener('change', async (e) => {
+        const f = e.target.files[0]; if (!f) return;
+        const side = e.target.dataset.side, state = e.target.dataset.state;
+        const fd = new FormData(); fd.append('image', f);
+        const up = await fetch('/api/upload', { method: 'POST', body: fd });
+        if (!up.ok) { document.getElementById('faceMsg').textContent = 'Upload failed'; return; }
+        const { path } = await up.json();
+        const r = await fetch(`/api/quiz/${token}/face`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ side, state, image_path: path })
+        });
+        if (!r.ok) { document.getElementById('faceMsg').textContent = 'Save failed'; return; }
+        document.getElementById('faceMsg').textContent = `Saved ${side} · ${state}`;
+        await loadQuiz();
+      });
+    });
+  }
+
+  function facesComplete() {
+    const haveByKey = new Set((quiz.faces || []).map(f => `${f.side}:${f.state}`));
+    for (const side of ['bride','groom'])
+      for (const st of FACE_STATES)
+        if (!haveByKey.has(`${side}:${st}`)) return false;
+    return true;
   }
 
   function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
