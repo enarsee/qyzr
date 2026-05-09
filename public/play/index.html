@@ -1,1 +1,25 @@
-<!doctype html><meta charset="utf-8"><title>WQ</title><h1>placeholder</h1>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Play · Wedding Quiz</title>
+  <link rel="stylesheet" href="/shared/styles.css">
+  <style>
+    body { font-size: 18px; }
+    main { max-width: 480px; margin: 0 auto; padding: 24px; padding-bottom: env(safe-area-inset-bottom); }
+    .stage { min-height: 100dvh; display: flex; flex-direction: column; gap: 16px; }
+    .opt-btn { width: 100%; min-height: 64px; font-size: 18px; padding: 16px; text-align: left; background: var(--surface); }
+    .opt-btn.locked-mine { background: var(--rose); color: #fff; }
+    .opt-btn.locked-other { opacity: 0.3; }
+    .banner { background: var(--gold); color: #fff; padding: 8px; text-align: center; font-family: 'Inter'; font-size: 14px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <main id="root" class="stage" aria-live="polite"><p style="text-align:center; padding-top: 80px;">Loading…</p></main>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/shared/icons.js"></script>
+  <script src="/shared/socket.js"></script>
+  <script src="/play/app.js"></script>
+</body>
+</html>
