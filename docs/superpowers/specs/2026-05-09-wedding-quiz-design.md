@@ -134,10 +134,12 @@ CREATE TABLE games (
 CREATE TABLE players (
   id TEXT PRIMARY KEY,
   game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  player_token TEXT UNIQUE NOT NULL,
   name TEXT NOT NULL,
   group_value TEXT NOT NULL,
   joined_at INTEGER NOT NULL,
   socket_id TEXT,
+  kicked INTEGER NOT NULL DEFAULT 0,
   UNIQUE(game_id, name)
 );
 
@@ -158,35 +160,73 @@ CREATE TABLE answers (
 - **Side score** — `SELECT SUM(correct) FROM answers a JOIN questions q ON a.question_id=q.id WHERE a.game_id=? AND q.side_tag=?`
 - **Side state** — see §7.
 
+### Concurrency rules
+- A quiz has **at most one non-finished game at a time.** Starting a new game when one is `lobby|active|revealing` is rejected; host must `Finish` first or use the explicit "Reset & start over" action which marks the existing game `finished` then creates a new row.
+- `answers.correct` is **denormalized as a snapshot** — set at the moment the answer is recorded based on the option's `is_correct` flag at that time. Editing `is_correct` of an option that already has answers does **not** retroactively update past `answers.correct`. The host UI hides `is_correct` toggles once any answer references a question (locked-after-played semantics). Question/option *text* edits propagate (purely cosmetic).
+
 ## 6. Realtime protocol (Socket.IO)
 
-All sockets join one of two rooms per game: `display:<game_id>` or `players:<game_id>`. Some events go to both.
+All sockets join one of three rooms per game: `host:<game_id>`, `display:<game_id>`, or `players:<game_id>`. Some events broadcast to multiple rooms.
+
+### Connection auth
+On `connection`, client sends an `auth` payload with one of:
+- `{ role: "host", creator_token }` → server resolves quiz by token, joins `host:<game_id>` of the active game.
+- `{ role: "display", room_code }` → server resolves game, joins `display:<game_id>`.
+- `{ role: "player", room_code, player_token? }` → if `player_token` matches an existing player row in the active game, **rebind**: update `socket_id`, mark online. Otherwise this is a fresh client; player_token will be issued via `player:join`.
+
+Server **verifies the role on every event** — a player socket emitting a `host:*` event is rejected with `error`.
 
 ### Client → server
-| Event | Payload | Sender |
-|-------|---------|--------|
-| `display:join` | `{ room_code }` | display |
-| `player:join` | `{ room_code, name, group_value }` | player |
-| `player:answer` | `{ option_id }` | player |
-| `host:start` | `{ }` | host (authenticated by token) |
-| `host:next` | `{ }` | host |
-| `host:reveal` | `{ }` | host |
-| `host:finish` | `{ }` | host |
-| `host:kick` | `{ player_id }` | host |
+| Event | Payload | Sender | Notes |
+|-------|---------|--------|-------|
+| `player:join` | `{ name, group_value }` | player (fresh) | server generates `player_token` (24-char base64url), returns it in `joined` ack so client persists in localStorage |
+| `player:answer` | `{ game_id, question_id, option_id }` | player | rejected if `question_id` ≠ `games.current_question_id` or game not in `active`; duplicates silently dropped |
+| `host:start` | `{ }` | host | quiz must have ≥1 question and no active game; creates a `games` row with `status='lobby'`, current_question_id=NULL |
+| `host:next` | `{ game_id }` | host | advances to next question by `position`; sets status `lobby|revealing → active`; emits `question:show`. From `revealing`, advances `current_question_id` to next; if no next, no-op (host should call `host:finish`) |
+| `host:reveal` | `{ game_id }` | host | only valid when status=`active`; transitions to `revealing`; emits `question:reveal` |
+| `host:finish` | `{ game_id }` | host | sets status=`finished`, emits `game:finished`; valid from any non-`finished` state |
+| `host:kick` | `{ game_id, player_id }` | host | sets `players.kicked=1`, force-disconnects the socket, broadcasts `player:kicked` |
+
+All host events include `game_id` to prevent stale-tab actions targeting a previous game (e.g. host opened the dashboard, started a game, finished it, then a stale tab tries to act on the old game).
 
 ### Server → client
 | Event | Payload | Recipients |
 |-------|---------|------------|
-| `state` | full game state snapshot | on join + on transition |
-| `player:joined` | `{ player_id, name, group_value }` | display + host |
-| `player:left` | `{ player_id }` | display + host |
-| `question:show` | `{ question, options (no `is_correct`) }` | display + players |
-| `answer:received` | `{ count, total }` | display + host |
-| `question:reveal` | `{ correct_option_id, distribution, leaderboard, table_leaderboard, side_scores, side_states }` | all |
-| `game:finished` | final summary | all |
+| `state` | full game state snapshot (status, current_question, players, scores) | on connect + on every transition |
+| `joined` (ack to `player:join`) | `{ player_id, player_token }` | joining player only |
+| `player:joined` | `{ player_id, name, group_value }` | host + display |
+| `player:left` | `{ player_id, reason: "disconnect"\|"kicked" }` | host + display |
+| `player:kicked` | `{ }` | the kicked player only (then socket is closed) |
+| `question:show` | `{ question_id, position, text, image_url, options: [{id, position, text}] }` | display + players |
+| `answer:received` | `{ question_id, count, total }` | host + display |
+| `question:reveal` | `{ question_id, correct_option_id, distribution, leaderboard, table_leaderboard, side_scores, side_states }` | all |
+| `game:finished` | `{ leaderboard, table_leaderboard, side_scores, winning_side }` | all |
 | `error` | `{ code, message }` | offending sender |
 
-The host channel is authenticated by including the creator token in the connection auth payload. Server verifies on every host-namespaced event.
+### `answer:received.total` definition
+`total` = the count of non-kicked players in the `players:<game_id>` Socket.IO room **at the moment `question:show` was emitted**, snapshotted on the server. Players who join *during* the question are not added to `total` for that question (they appear as a higher `total` next question). This makes "47 / 62 answered" stable for the duration of the question.
+
+### Game state machine
+```
+                 host:start
+   (no game) ───────────────────► lobby
+                                     │
+                                     │ host:next  (loads first question)
+                                     ▼
+       ┌───────────────────────► active ─────────┐
+       │                            │             │
+       │ host:next (next q exists)  │ host:reveal │
+       │                            ▼             │
+       └────────────────────────  revealing ──────┘
+                                     │
+                                     │ host:finish (any state)
+                                     ▼
+                                  finished
+```
+- From `lobby`: `host:next` → `active` with first question loaded.
+- From `active`: `host:reveal` → `revealing`. (Implementations may also accept `host:next` from `active` as "skip without reveal" — out of scope for v1; not implemented.)
+- From `revealing`: `host:next` → `active` with next question loaded; if no more questions, host should call `host:finish`.
+- `host:finish` is valid from `lobby|active|revealing`.
 
 ## 7. Couple-mode mechanic
 
@@ -206,6 +246,8 @@ else:              bride=angry,  groom=winner
 ```
 
 Thresholds chosen so states change perceptibly across the game without flipping every question.
+
+**Initial state (before any reveals):** both sides render in `neutral`. The VS panel is hidden in lobby state and during the *first* question's `question:show` (i.e. before any `question:reveal` has fired). It first appears in the reveal state of question 1.
 
 ### Display rendering
 - Two square photos side by side at the bottom of the display, horizontal score bar between them filling proportionally toward the leading side.
@@ -244,7 +286,7 @@ Three states: lobby, question, reveal.
 - **Join screen:** centered card. Name input (autocaps, ≥16px to avoid iOS auto-zoom), table number input (`inputmode="numeric"`), room code (6-char monospace, autoupper). Sticky "Join" button anchored to safe-area inset.
 - **Lobby:** hero image, "Welcome {name} · Table {n}", pulsing waiting indicator.
 - **Question:** question text top third, optional image, 4 stacked option buttons (full-width, ≥64px tall). Tap commits — selected option scales 0.97 then back, others fade to 30% opacity. Lock state shows "Answer locked — wait for reveal." Optional `navigator.vibrate(20)` haptic.
-- **Reveal:** "✓ Correct! +1" or "✗ Not quite" with icon (color paired with icon, not color-only). Running rank + side score below.
+- **Reveal:** "Correct! +1" with green Lucide `check-circle`, or "Not quite" with red Lucide `x-circle` (color is always paired with icon — never color-only). Running rank + side score below.
 - Reconnect handling: socket disconnect → "Reconnecting…" banner; queued answer resends on reconnect.
 
 ### Accessibility
@@ -263,11 +305,11 @@ Three states: lobby, question, reveal.
 ### Mitigations
 - **Creator token** — 32-char base62 (~190 bits). Treated as a bearer secret. URL-only; never logged.
 - **Room code** — 6-char base32 minus `0/O/1/I` (~30 bits). Sufficient for guess-resistance over a ~6h event.
-- **Rate limits** (per-IP):
-  - `/create`: 10/hour
-  - `/play` join: 10/min
-  - `player:answer`: server enforces 1 answer per (player, question); duplicates dropped silently.
-  - Socket connections: 60/min per IP.
+- **Rate limits:**
+  - HTTP: `express-rate-limit` middleware. `/create` 10/hour/IP, `/play/*` 30/min/IP, image upload 20/hour/IP.
+  - Socket connection: a custom Express middleware on the HTTP-upgrade path tracks IP → connection-rate (60/min/IP) using a per-process LRU. Excess upgrades are rejected with HTTP 429.
+  - `player:answer`: server-side dedupe via `UNIQUE(game_id, question_id, player_id)` constraint; duplicate INSERT is caught and silently dropped. Independent of this, each player socket is throttled to **5 emits/sec** for any event (token-bucket per socket) to prevent flooding.
+  - `host:*` events: throttled to 10/sec per host socket.
 - **Image upload validation:** MIME sniffed via magic bytes (not just extension); reject anything not `image/jpeg|png|webp`; max 5MB; resize/strip EXIF on upload via `sharp` (privacy + size).
 - **Input validation:** all string fields trimmed and length-capped (name ≤30, group_value ≤10, question text ≤300, option text ≤120).
 - **No SQL string interpolation:** all queries parameterized.
@@ -307,6 +349,7 @@ services:
     ports: ["80:80", "443:443"]
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./data/uploads:/srv/uploads:ro
       - caddy_data:/data
       - caddy_config:/config
 
@@ -318,11 +361,20 @@ volumes:
 ### Caddyfile
 ```
 quiz.example.com {
-  reverse_proxy app:3000
   encode zstd gzip
   header Strict-Transport-Security "max-age=31536000"
+
+  # Uploaded images served as static files (volume-mounted from app container).
+  handle_path /uploads/* {
+    root * /srv/uploads
+    file_server
+  }
+
+  # Everything else (HTML, /api, /socket.io WebSockets) goes to the app.
+  reverse_proxy app:3000
 }
 ```
+The `caddy` service mounts the app container's `/data/uploads` as `/srv/uploads` (read-only) so it can serve images directly without round-tripping through Node. The architecture diagram in this section reflects that path.
 
 ### Steps (documented in DEPLOY.md)
 1. Point DNS A record `quiz.example.com` → VPS IP.
@@ -337,9 +389,15 @@ quiz.example.com {
 
 ## 11. Testing strategy
 
-- **Unit tests** (Jest) for: side-state computation, score aggregation, room-code generation, input validators.
-- **Integration tests** for: REST endpoints (create quiz, upload image, fetch quiz), Socket.IO event flows (join → answer → reveal).
-- **Manual smoke test on the day-1 build:** open display + 3 player tabs locally, run a 5-question game end-to-end.
+- **Unit tests** (Jest) for: side-state computation, score aggregation, room-code generation, input validators, snapshot semantics of `answers.correct`.
+- **Integration tests** for:
+  - REST endpoints (create quiz, upload image, fetch quiz, edit question, image MIME validation)
+  - Socket.IO event flows: join → answer → reveal full lifecycle
+  - **Auth enforcement** — player socket emitting `host:*` is rejected; host socket with bad/missing creator_token cannot join host room; stale `game_id` in host event is rejected
+  - **Reconnect path** — player joins, gets player_token, disconnects, reconnects with token, rebinds to existing player row (no duplicate row, scores preserved)
+  - **Kick path** — kicked player is disconnected, marked kicked, cannot rejoin with same token
+  - Game state machine — invalid transitions (e.g. `host:reveal` while in `lobby`) rejected
+- **Manual smoke test on the day-1 build:** open display + 3 player tabs locally, run a 5-question game end-to-end including a forced disconnect/reconnect of one player.
 - **Load test (lightweight):** Artillery script simulating 150 players joining + answering one question; verify latency and no dropped events on a CX11-class VPS.
 
 ## 12. Out-of-scope risks (acknowledge)
