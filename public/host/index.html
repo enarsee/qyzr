@@ -20,6 +20,16 @@
   </style>
 </head>
 <body>
+  <div id="saveLinkBanner" style="display:none; background: var(--gold); color: #fff; padding: 14px 24px; font-family: 'Inter'; font-weight: 500; box-shadow: var(--shadow-sm);">
+    <div style="max-width: 1100px; margin: 0 auto; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+      <span style="font-size: 18px;">★</span>
+      <strong style="font-size: 15px;">Bookmark this page!</strong>
+      <span style="font-size: 14px; opacity: 0.95;">This URL is the only way back to manage your quiz. Save it now.</span>
+      <span style="flex: 1;"></span>
+      <button class="btn" id="copyHostUrlBtn" style="background: rgba(255,255,255,0.2); color: #fff; min-height: 36px; padding: 6px 14px; box-shadow: none; font-size: 14px;">Copy link</button>
+      <button class="btn" id="dismissBannerBtn" style="background: transparent; color: #fff; min-height: 36px; padding: 6px 10px; box-shadow: none; font-size: 14px;" aria-label="Dismiss">×</button>
+    </div>
+  </div>
   <div class="topbar">
     <div class="font-script" style="font-size:32px; color: var(--rose);" id="quizName">Quiz</div>
     <div style="display:flex; align-items:center; gap: 12px;">

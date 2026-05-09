@@ -1,5 +1,39 @@
 (function () {
-  const token = location.pathname.split('/').pop();
+  const token = location.pathname.split('/').pop().split('?')[0];
+
+  // First-visit banner: if redirected from /create with ?fresh=1, prompt the host to save this URL.
+  function maybeShowSaveBanner() {
+    const params = new URLSearchParams(location.search);
+    const fresh = params.get('fresh') === '1';
+    const seenKey = `wq_seen_save_url_${token}`;
+    if (!fresh || localStorage.getItem(seenKey)) return;
+
+    const banner = document.getElementById('saveLinkBanner');
+    if (!banner) return;
+    banner.style.display = 'block';
+
+    document.getElementById('copyHostUrlBtn').onclick = async () => {
+      const url = location.origin + location.pathname; // strip ?fresh=1 from copy
+      try {
+        await navigator.clipboard.writeText(url);
+        const btn = document.getElementById('copyHostUrlBtn');
+        const original = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = original; }, 2000);
+      } catch {
+        // Fallback: select-all the URL via prompt
+        prompt('Copy this URL:', url);
+      }
+    };
+    document.getElementById('dismissBannerBtn').onclick = () => {
+      banner.style.display = 'none';
+      localStorage.setItem(seenKey, '1');
+      // Clean the URL bar so reload doesn't re-show
+      const cleanUrl = location.origin + location.pathname;
+      history.replaceState(null, '', cleanUrl);
+    };
+  }
+  maybeShowSaveBanner();
   let quiz = null;
   let state = null;
   let socket = null;

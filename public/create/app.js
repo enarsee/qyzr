@@ -31,5 +31,7 @@ document.getElementById('form').addEventListener('submit', async (e) => {
   const list = JSON.parse(localStorage.getItem('wq_creator_urls') || '[]');
   list.unshift({ name: body.name, host_url: j.host_url, room_code: j.room_code, created_at: Date.now() });
   localStorage.setItem('wq_creator_urls', JSON.stringify(list.slice(0, 20)));
-  window.location.href = j.host_url;
+  // Append ?fresh=1 so the host page knows to show the "save this link" banner.
+  const sep = j.host_url.includes('?') ? '&' : '?';
+  window.location.href = j.host_url + sep + 'fresh=1';
 });

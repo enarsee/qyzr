@@ -4,6 +4,7 @@
   let state = null;
   let lastReveal = null;
   let answerCount = 0, answerTotal = 0;
+  let liveDistribution = {};
   const root = document.getElementById('root');
 
   async function loadPublic() {
@@ -19,18 +20,60 @@
     return f ? f.image_path : `/defaults/${side}-${st}.svg`;
   }
 
+  function optionSide(text) {
+    const t = String(text || '').trim().toLowerCase();
+    if (!t) return null;
+    if (t === String(quiz.bride_label || 'Bride').trim().toLowerCase()) return 'bride';
+    if (t === String(quiz.groom_label || 'Groom').trim().toLowerCase()) return 'groom';
+    return null;
+  }
+
+  function moodFor(share, hasAnyVotes) {
+    if (!hasAnyVotes) return 'neutral';
+    if (share >= 0.95) return 'winner';
+    if (share >= 0.65) return 'happy';
+    if (share >= 0.35) return 'neutral';
+    if (share >= 0.10) return 'sad';
+    return 'angry';
+  }
+
   function connect() {
     const s = WQ_connect({ role: 'display', room_code: code });
-    s.on('state', (st) => { state = st; render(); });
-    s.on('question:show', (_q) => { answerCount = 0; answerTotal = state?.players?.length || 0; lastReveal = null; render(); });
-    s.on('answer:received', ({ count, total }) => { answerCount = count; answerTotal = total; renderAnswerCounter(); });
+    s.on('state', (st) => { state = st; if (state.status === 'active') liveDistribution = {}; render(); });
+    s.on('question:show', () => { answerCount = 0; answerTotal = state?.players?.length || 0; liveDistribution = {}; lastReveal = null; render(); });
+    s.on('answer:received', ({ count, total, option_id }) => {
+      answerCount = count; answerTotal = total;
+      if (option_id) liveDistribution[option_id] = (liveDistribution[option_id] || 0) + 1;
+      updateLive();
+    });
     s.on('question:reveal', (r) => { lastReveal = r; render(); });
     s.on('game:finished', (r) => { lastReveal = r; if (state) state.status = 'finished'; render(); });
   }
 
-  function renderAnswerCounter() {
-    const el = document.getElementById('answerCounter');
-    if (el) el.textContent = `${answerCount} / ${answerTotal} answered`;
+  function updateLive() {
+    const ac = document.getElementById('answerCounter');
+    if (ac) ac.textContent = `${answerCount} / ${answerTotal} answered`;
+    if (!state || state.status !== 'active') return;
+    const totalVotes = Object.values(liveDistribution).reduce((a,b) => a+b, 0);
+    const max = Math.max(1, ...Object.values(liveDistribution));
+    document.querySelectorAll('.option-card[data-id]').forEach(card => {
+      const id = card.dataset.id;
+      const v = liveDistribution[id] || 0;
+      const pct = totalVotes > 0 ? Math.round((v / totalVotes) * 100) : 0;
+      const bar = card.querySelector('.vote-bar');
+      if (bar) bar.style.height = `${(v / max) * 100}%`;
+      const lbl = card.querySelector('.live-pct');
+      if (lbl) lbl.textContent = `${pct}%`;
+      const face = card.querySelector('.opt-face');
+      if (face) {
+        const side = face.dataset.side;
+        const share = max > 0 ? v / max : 0;
+        const mood = moodFor(share, totalVotes > 0);
+        const newSrc = faceUrl(side, mood);
+        if (face.src.indexOf(newSrc.split('/').pop()) === -1) face.src = newSrc;
+        face.classList.toggle('winning-face', totalVotes > 0 && v === max && v > 0);
+      }
+    });
   }
 
   function render() {
@@ -69,17 +112,26 @@
           ${cur.image_url ? `<img src="${cur.image_url}" style="width:100%; max-height: 50vh; object-fit: contain; border-radius: var(--radius-md);">` : ''}
         </div>
         <div class="options-grid">
-          ${cur.options.map((o, i) => `
-            <div class="option-card" data-id="${o.id}">
-              <span class="option-letter">${letters[i]}</span>
-              <div class="option-text">${escapeHtml(o.text)}</div>
-              <div class="vote-bar" style="height: 0%;"></div>
-            </div>
-          `).join('')}
+          ${cur.options.map((o, i) => {
+            const side = optionSide(o.text);
+            const face = side
+              ? `<img class="opt-face" data-side="${side}" src="${faceUrl(side, 'neutral')}" alt="" style="width:96px;height:96px;border-radius:50%;object-fit:cover;position:relative;z-index:2;transition:filter 300ms ease-out;">`
+              : '';
+            return `
+              <div class="option-card" data-id="${o.id}" style="position:relative;overflow:hidden;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:20px;">
+                <span class="option-letter" style="position:relative;z-index:2;">${letters[i]}</span>
+                <div class="option-text" style="position:relative;z-index:2;">${escapeHtml(o.text)}</div>
+                ${face}
+                <div class="vote-bar" style="height: 0%; opacity: 0.28;"></div>
+                <div class="live-pct" style="position:absolute;bottom:14px;right:18px;font-family:'Inter';font-weight:700;color:var(--ink);font-size:24px;font-variant-numeric:tabular-nums;z-index:2;">0%</div>
+              </div>
+            `;
+          }).join('')}
         </div>
         <p id="answerCounter" class="font-ui tabular" style="text-align:center; color: var(--muted);">${answerCount} / ${answerTotal} answered</p>
       </div>
     `;
+    updateLive();
   }
 
   function renderReveal() {
