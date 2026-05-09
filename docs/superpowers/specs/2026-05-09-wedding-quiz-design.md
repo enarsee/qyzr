@@ -179,7 +179,7 @@ Server **verifies the role on every event** — a player socket emitting a `host
 ### Client → server
 | Event | Payload | Sender | Notes |
 |-------|---------|--------|-------|
-| `player:join` | `{ name, group_value }` | player (fresh) | server generates `player_token` (24-char base64url), returns it in `joined` ack so client persists in localStorage |
+| `player:join` | `{ name, group_value }` | player (fresh) | server trims+validates name; on `UNIQUE(game_id, name)` collision, **server rejects with `error { code: "name_taken" }`** and the player UI prompts for a different name (no auto-rename). On success, server generates `player_token` (24-char base64url), returns it in `joined` ack so client persists in localStorage. |
 | `player:answer` | `{ game_id, question_id, option_id }` | player | rejected if `question_id` ≠ `games.current_question_id` or game not in `active`; duplicates silently dropped |
 | `host:start` | `{ }` | host | quiz must have ≥1 question and no active game; creates a `games` row with `status='lobby'`, current_question_id=NULL |
 | `host:next` | `{ game_id }` | host | advances to next question by `position`; sets status `lobby|revealing → active`; emits `question:show`. From `revealing`, advances `current_question_id` to next; if no next, no-op (host should call `host:finish`) |
@@ -192,7 +192,7 @@ All host events include `game_id` to prevent stale-tab actions targeting a previ
 ### Server → client
 | Event | Payload | Recipients |
 |-------|---------|------------|
-| `state` | full game state snapshot (status, current_question, players, scores) | on connect + on every transition |
+| `state` | `{ game_id, status, quiz: {name, bride_label, groom_label, group_label, accent_color, hero_image_url}, current_question: {question_id, position, text, image_url, options} \| null, total_questions, players: [{id, name, group_value}], leaderboard, table_leaderboard, side_scores, side_states }` (sensitive fields like `is_correct` omitted unless status=`revealing`/`finished`) | on connect + on every transition. Also re-emitted as a no-op acknowledgement when `host:next` is called with no further questions. |
 | `joined` (ack to `player:join`) | `{ player_id, player_token }` | joining player only |
 | `player:joined` | `{ player_id, name, group_value }` | host + display |
 | `player:left` | `{ player_id, reason: "disconnect"\|"kicked" }` | host + display |
@@ -307,7 +307,7 @@ Three states: lobby, question, reveal.
 - **Room code** — 6-char base32 minus `0/O/1/I` (~30 bits). Sufficient for guess-resistance over a ~6h event.
 - **Rate limits:**
   - HTTP: `express-rate-limit` middleware. `/create` 10/hour/IP, `/play/*` 30/min/IP, image upload 20/hour/IP.
-  - Socket connection: a custom Express middleware on the HTTP-upgrade path tracks IP → connection-rate (60/min/IP) using a per-process LRU. Excess upgrades are rejected with HTTP 429.
+  - Socket connection: a custom Express middleware on the HTTP-upgrade path tracks IP → connection-rate (60/min/IP) using a per-process `lru-cache` (max 10,000 entries, 5-minute TTL). Excess upgrades are rejected with HTTP 429.
   - `player:answer`: server-side dedupe via `UNIQUE(game_id, question_id, player_id)` constraint; duplicate INSERT is caught and silently dropped. Independent of this, each player socket is throttled to **5 emits/sec** for any event (token-bucket per socket) to prevent flooding.
   - `host:*` events: throttled to 10/sec per host socket.
 - **Image upload validation:** MIME sniffed via magic bytes (not just extension); reject anything not `image/jpeg|png|webp`; max 5MB; resize/strip EXIF on upload via `sharp` (privacy + size).
