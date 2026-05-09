@@ -30,9 +30,13 @@ CREATE TABLE IF NOT EXISTS questions (
   position INTEGER NOT NULL,
   text TEXT NOT NULL,
   image_path TEXT,
-  side_tag TEXT NOT NULL CHECK (side_tag IN ('bride','groom','neutral'))
+  side_tag TEXT NOT NULL CHECK (side_tag IN ('bride','groom','neutral')),
+  is_trivia INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_questions_quiz_position ON questions(quiz_id, position);
+
+-- migrate existing dbs (idempotent best-effort: SQLite doesn't support IF NOT EXISTS on ADD COLUMN)
+-- The host code defensively reads the column with COALESCE so missing column on older dbs degrades to is_trivia=0.
 
 CREATE TABLE IF NOT EXISTS options (
   id TEXT PRIMARY KEY,

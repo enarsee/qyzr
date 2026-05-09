@@ -38,15 +38,18 @@
     .qtext { font-family: 'Cormorant Infant', Georgia, serif; font-size: clamp(48px, 5.5vw, 80px); font-weight: 600; line-height: 1.15; margin: 0; }
     .qimg { width: 100%; max-height: 40vh; object-fit: contain; border-radius: var(--radius-md); }
     .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-    .opt { position: relative; overflow: hidden; background: var(--surface); border-radius: var(--radius-md); box-shadow: var(--shadow-md); padding: 28px 32px; min-height: 18vh; display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; transition: transform 250ms ease-out, opacity 250ms ease-out, box-shadow 300ms ease-out, background 300ms ease-out; }
-    .opt-letter { font-family: 'Inter'; font-weight: 700; font-size: clamp(36px, 4vw, 56px); color: var(--muted); }
-    .opt-text { font-family: 'Cormorant Infant', serif; font-size: clamp(28px, 3vw, 40px); }
-    .opt-vote-fill { position: absolute; inset: 0 0 0 0; background: var(--rose); opacity: 0.18; transform-origin: bottom; transform: scaleY(0); transition: transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1), background 600ms ease-out, opacity 600ms ease-out; pointer-events: none; }
-    .opt-vote-fill.consensus { background: var(--gold); opacity: 0.36; }
-    .opt-count { position: absolute; bottom: 12px; right: 16px; font-family: 'Inter'; font-weight: 600; color: var(--ink); font-size: 14px; opacity: 0; transition: opacity 200ms ease-out; }
+    .opt { position: relative; overflow: hidden; background: var(--surface); border-radius: var(--radius-md); box-shadow: var(--shadow-md); padding: 28px 32px; min-height: 22vh; display: grid; grid-template-columns: auto 1fr auto; gap: 20px; align-items: center; transition: transform 250ms ease-out, opacity 250ms ease-out, box-shadow 300ms ease-out, background 300ms ease-out; }
+    .opt-letter { font-family: 'Inter'; font-weight: 700; font-size: clamp(36px, 4vw, 56px); color: var(--muted); position: relative; z-index: 2; }
+    .opt-text { font-family: 'Cormorant Infant', serif; font-size: clamp(28px, 3vw, 40px); position: relative; z-index: 2; }
+    .opt-face { width: clamp(80px, 8vw, 120px); height: clamp(80px, 8vw, 120px); border-radius: 50%; object-fit: cover; position: relative; z-index: 2; transition: filter 300ms ease-out, transform 300ms ease-out; }
+    .opt-face.winning-face { filter: drop-shadow(0 0 16px var(--gold)); transform: scale(1.05); }
+    .opt-vote-fill { position: absolute; inset: 0 0 0 0; background: var(--rose); opacity: 0.28; transform-origin: bottom; transform: scaleY(0); transition: transform 350ms cubic-bezier(0.34, 1.56, 0.64, 1), background 600ms ease-out, opacity 600ms ease-out; pointer-events: none; z-index: 0; }
+    .opt-vote-fill.consensus { background: var(--gold); opacity: 0.42; }
+    .opt-live-pct { position: absolute; bottom: 14px; right: 18px; font-family: 'Inter'; font-weight: 700; color: var(--ink); font-size: clamp(20px, 2vw, 28px); font-variant-numeric: tabular-nums; opacity: 0.85; z-index: 2; transition: opacity 200ms ease-out; }
+    .opt-count { position: absolute; bottom: 12px; right: 16px; font-family: 'Inter'; font-weight: 600; color: var(--ink); font-size: 14px; opacity: 0; transition: opacity 200ms ease-out; z-index: 2; }
     .opt.correct { background: #FFF8E1; transform: scale(1.04); box-shadow: 0 0 60px rgba(184,137,58,0.35), var(--shadow-md); }
     .opt .opt-count { opacity: 1; }
-    .opt.correct::after { content: '★'; position: absolute; top: 12px; right: 16px; font-family: 'Inter'; font-weight: 700; font-size: 28px; color: var(--gold); }
+    .opt.correct::after { content: '★'; position: absolute; top: 12px; right: 16px; font-family: 'Inter'; font-weight: 700; font-size: 28px; color: var(--gold); z-index: 2; }
 
     .qprogress { display: flex; gap: 8px; align-items: center; justify-content: center; }
     .qprogress .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--bg); border: 1px solid #E3D9CC; transition: background 300ms ease-out; }

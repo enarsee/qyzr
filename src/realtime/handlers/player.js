@@ -56,8 +56,9 @@ function register(io, socket) {
     if (!result.recorded) { return; } // duplicate; drop silently
     const count = answers.countForQuestion(game_id, question_id);
     const total = getTotal(game_id, question_id);
-    io.to(`host:${game_id}`).emit('answer:received', { question_id, count, total });
-    io.to(`display:${game_id}`).emit('answer:received', { question_id, count, total });
+    // option_id is sent only to host + display rooms (not back to players) — guests can't infer others' votes.
+    io.to(`host:${game_id}`).emit('answer:received', { question_id, option_id, count, total });
+    io.to(`display:${game_id}`).emit('answer:received', { question_id, option_id, count, total });
   });
 }
 

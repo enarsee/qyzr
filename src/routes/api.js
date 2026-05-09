@@ -117,8 +117,11 @@ router.post('/api/quiz/:token/question', (req, res) => {
   const q = requireQuizByToken(req, res); if (!q) return;
   try {
     const text = v.validateQuestionText(req.body.text);
-    // Poll mode: side_tag defaults to neutral; clients no longer set it.
-    const side_tag = req.body.side_tag ? v.validateSideTag(req.body.side_tag) : 'neutral';
+    const is_trivia = !!req.body.is_trivia;
+    // Poll questions force neutral + no correct flags; trivia validates side + exactly one correct
+    const side_tag = is_trivia
+      ? v.validateSideTag(req.body.side_tag || 'neutral')
+      : 'neutral';
     const image_path = (() => {
       const p = req.body.image_path;
       if (p == null || p === '') return null;
@@ -127,10 +130,13 @@ router.post('/api/quiz/:token/question', (req, res) => {
     })();
     const opts = (req.body.options || []).map(o => ({
       text: v.validateOptionText(o.text),
-      is_correct: !!o.is_correct  // retained in DB for forward-compat; UI no longer surfaces it
+      is_correct: is_trivia ? !!o.is_correct : false
     }));
     if (opts.length < 2 || opts.length > 4) throw new Error('options_count_invalid');
-    const out = questions.create({ quiz_id: q.id, text, image_path, side_tag, options: opts });
+    if (is_trivia && opts.filter(o => o.is_correct).length !== 1) {
+      throw new Error('exactly_one_correct_required');
+    }
+    const out = questions.create({ quiz_id: q.id, text, image_path, side_tag, is_trivia, options: opts });
     res.json(out);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -140,13 +146,23 @@ router.put('/api/question/:id', (req, res) => {
   const existing = questions.byId(req.params.id);
   if (!existing || existing.quiz_id !== q.id) return res.status(404).json({ error: 'not_found' });
   try {
+    const targetTrivia = req.body.is_trivia !== undefined ? !!req.body.is_trivia : !!existing.is_trivia;
     const fields = {};
     if (req.body.text !== undefined) fields.text = v.validateQuestionText(req.body.text);
+    if (req.body.is_trivia !== undefined) {
+      if (questions.hasAnswers(req.params.id)) {
+        return res.status(409).json({ error: 'is_trivia_locked_after_play' });
+      }
+      fields.is_trivia = !!req.body.is_trivia;
+    }
     if (req.body.side_tag !== undefined) {
       if (questions.hasAnswers(req.params.id)) {
         return res.status(409).json({ error: 'side_tag_locked_after_play' });
       }
-      fields.side_tag = v.validateSideTag(req.body.side_tag);
+      fields.side_tag = targetTrivia ? v.validateSideTag(req.body.side_tag) : 'neutral';
+    } else if (req.body.is_trivia !== undefined && !targetTrivia) {
+      // Switching trivia → poll: reset side to neutral implicitly
+      fields.side_tag = 'neutral';
     }
     if (req.body.image_path !== undefined) {
       const p = req.body.image_path;
@@ -160,9 +176,13 @@ router.put('/api/question/:id', (req, res) => {
         return res.status(409).json({ error: 'options_locked_after_play' });
       }
       const opts = req.body.options.map(o => ({
-        text: v.validateOptionText(o.text), is_correct: !!o.is_correct
+        text: v.validateOptionText(o.text),
+        is_correct: targetTrivia ? !!o.is_correct : false
       }));
       if (opts.length < 2 || opts.length > 4) throw new Error('options_count_invalid');
+      if (targetTrivia && opts.filter(o => o.is_correct).length !== 1) {
+        throw new Error('exactly_one_correct_required');
+      }
       questions.setOptions(req.params.id, opts);
     }
     res.json({ ok: true });

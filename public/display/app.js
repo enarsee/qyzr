@@ -89,29 +89,49 @@
     const letters = ['A','B','C','D'];
     const totalVotes = r.distribution.reduce((a, b) => a + b.n, 0) || 1;
     const distMap = Object.fromEntries(r.distribution.map(d => [d.option_id, d.n]));
-    // Most-voted option becomes the "popular" highlight (poll mode)
     let popularId = null, popularN = 0;
     for (const [id, n] of Object.entries(distMap)) {
       if (n > popularN) { popularN = n; popularId = id; }
     }
+    const isTrivia = !!cur.is_trivia;
+    const top5 = (r.leaderboard || []).slice(0, 5);
+    const tables = (r.table_leaderboard || []).slice(0, 5);
+    const showLeaderboard = isTrivia && top5.some(p => p.score > 0);
+
     root.innerHTML = `
       <div class="display-shell">
         <h1 class="question-text">${escapeHtml(cur.text)}</h1>
         <div class="options-grid">
           ${cur.options.map((o, i) => {
-            const isPopular = popularN > 0 && o.id === popularId;
+            const highlight = isTrivia ? (o.id === r.correct_option_id) : (popularN > 0 && o.id === popularId);
             const pct = Math.round(((distMap[o.id] || 0) / totalVotes) * 100);
             const votes = distMap[o.id] || 0;
+            const dim = isTrivia && !highlight ? 'opacity: 0.4;' : '';
             return `
-              <div class="option-card ${isPopular ? 'correct' : ''}">
+              <div class="option-card ${highlight ? 'correct' : ''}" style="${dim}">
                 <span class="option-letter">${letters[i]}</span>
                 <div class="option-text">${escapeHtml(o.text)}</div>
                 <div style="position:absolute;bottom:12px;right:16px;font-family:'Inter';font-weight:600;color:var(--ink);">${pct}% · ${votes}</div>
+                ${highlight ? `<div style="position:absolute;top:12px;right:16px;font-size:28px;color:var(--gold);font-weight:700;">${isTrivia ? '✓' : '★'}</div>` : ''}
                 <div class="vote-bar" style="height: ${pct}%"></div>
               </div>`;
           }).join('')}
         </div>
-        <p style="text-align:center;font-family:'Inter';color:var(--muted);font-size:18px;margin-top:8px;">${popularN} of ${totalVotes} ${totalVotes === 1 ? 'vote' : 'votes'} for the most popular answer</p>
+        ${isTrivia
+          ? `<p style="text-align:center;font-family:'Inter';color:var(--muted);font-size:18px;margin-top:8px;">${distMap[r.correct_option_id] || 0} of ${totalVotes} guests got it right</p>`
+          : `<p style="text-align:center;font-family:'Inter';color:var(--muted);font-size:18px;margin-top:8px;">${popularN} of ${totalVotes} ${totalVotes === 1 ? 'vote' : 'votes'} for the most popular answer</p>`}
+        ${showLeaderboard ? `
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px;">
+            <div class="leaderboard">
+              <h3>Top players</h3>
+              <ol>${top5.map(p => `<li><strong>${escapeHtml(p.name)}</strong> · ${p.score}</li>`).join('')}</ol>
+            </div>
+            <div class="leaderboard">
+              <h3>Top ${escapeHtml(quiz.group_label || 'tables')}</h3>
+              <ol>${tables.slice(0, 5).map(t => `<li>${escapeHtml(t.group_value)} · ${t.score}</li>`).join('')}</ol>
+            </div>
+          </div>
+        ` : ''}
       </div>
     `;
   }

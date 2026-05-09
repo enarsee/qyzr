@@ -180,19 +180,37 @@
     const r = lastReveal;
     if (!r) return;
     const cur = state.current_question || {};
+    const isTrivia = !!cur.is_trivia;
     const distMap = Object.fromEntries((r.distribution || []).map(d => [d.option_id, d.n]));
     const total = Object.values(distMap).reduce((a,b) => a+b, 0) || 1;
+    const myOption = (cur.options || []).find(o => o.id === lastAnswerOptionId);
+    const myVotes = distMap[lastAnswerOptionId] || 0;
+    const myPct = Math.round((myVotes / total) * 100);
+
+    if (isTrivia) {
+      const correctOpt = (cur.options || []).find(o => o.id === r.correct_option_id);
+      const isCorrect = lastAnswerOptionId && lastAnswerOptionId === r.correct_option_id;
+      const me = (r.leaderboard || []).find(p => p.id === myPlayerId);
+      const rank = me ? r.leaderboard.findIndex(p => p.id === myPlayerId) + 1 : null;
+      root.innerHTML = `
+        <div style="text-align:center; padding-top: 24px;">
+          <div style="color: ${isCorrect ? 'var(--success)' : 'var(--error)'};">${isCorrect ? WQ_ICONS.checkCircle : WQ_ICONS.xCircle}</div>
+          <h2 style="margin: 16px 0 8px;">${isCorrect ? 'Correct! +1' : 'Not quite'}</h2>
+          ${!isCorrect && correctOpt ? `<p class="font-ui" style="color: var(--muted);">The answer was <strong style="color:var(--ink);">${escapeHtml(correctOpt.text)}</strong></p>` : ''}
+          ${me ? `<p class="font-ui" style="margin-top: 16px;">You're #${rank} with ${me.score} ${me.score === 1 ? 'point' : 'points'}</p>` : ''}
+        </div>
+      `;
+      return;
+    }
+
+    // Poll mode reveal
     let popularId = null, popularN = 0;
     for (const [id, n] of Object.entries(distMap)) {
       if (n > popularN) { popularN = n; popularId = id; }
     }
-    const myOption = (cur.options || []).find(o => o.id === lastAnswerOptionId);
     const popOption = (cur.options || []).find(o => o.id === popularId);
-    const myVotes = distMap[lastAnswerOptionId] || 0;
-    const myPct = Math.round((myVotes / total) * 100);
     const popPct = Math.round((popularN / total) * 100);
     const isAlsoPopular = lastAnswerOptionId && lastAnswerOptionId === popularId;
-
     root.innerHTML = `
       <div style="text-align:center; padding-top: 24px;">
         <p class="font-ui" style="color: var(--muted); font-size: 14px; margin: 0;">You voted</p>
@@ -206,9 +224,19 @@
   }
 
   function renderFinished() {
+    const r = lastReveal || {};
+    const top = (r.leaderboard || []).slice(0, 3).filter(p => p.score > 0);
+    const me = (r.leaderboard || []).find(p => p.id === myPlayerId);
+    const myRank = me ? r.leaderboard.findIndex(p => p.id === myPlayerId) + 1 : null;
     root.innerHTML = `
-      <h1 class="font-script" style="font-size:48px; color: var(--rose); text-align:center; margin: 24px 0;">Thanks for voting!</h1>
-      <p style="text-align:center;color:var(--muted);">The host has ended the poll.</p>
+      <h1 class="font-script" style="font-size:48px; color: var(--rose); text-align:center; margin: 24px 0;">Thanks for playing!</h1>
+      ${top.length ? `
+        <div class="card">
+          <h3 style="margin:0 0 8px;">Top 3</h3>
+          <ol>${top.map(p => `<li><strong>${escapeHtml(p.name)}</strong> · ${p.score}</li>`).join('')}</ol>
+        </div>
+        ${me && me.score > 0 ? `<p style="text-align:center; color: var(--muted); margin-top: 16px;">You're #${myRank} with ${me.score} ${me.score === 1 ? 'point' : 'points'}</p>` : ''}
+      ` : `<p style="text-align:center;color:var(--muted);">The host has ended the poll.</p>`}
     `;
   }
 

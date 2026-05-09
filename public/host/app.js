@@ -52,9 +52,10 @@
   }
 
   function primaryButtonLabel() {
-    if (!state || state.status === 'finished' || !state.game_id) return 'Start poll';
+    if (!state || state.status === 'finished' || !state.game_id) return 'Start';
     if (state.status === 'lobby') return 'Show first question';
-    if (state.status === 'active') return 'Reveal results';
+    const cur = state.current_question;
+    if (state.status === 'active') return cur && cur.is_trivia ? 'Reveal answer' : 'Reveal results';
     if (state.status === 'revealing') return 'Next question';
     return 'Start game';
   }
@@ -116,10 +117,11 @@
       div.className = 'qrow';
       div.draggable = true;
       div.dataset.id = q.id;
+      const pillText = q.is_trivia ? `trivia · ${q.side_tag}` : 'poll';
       div.innerHTML = `
         <strong style="font-family:'Inter';color:var(--muted);">${q.position}.</strong>
         <span style="flex:1;">${escapeHtml(q.text || '(untitled)')}</span>
-        <span class="player-pill">${q.side_tag}</span>
+        <span class="player-pill">${pillText}</span>
       `;
       div.addEventListener('click', () => openEditor(q.id));
       addDragHandlers(div, list);
@@ -134,9 +136,22 @@
     editor.innerHTML = `
       <h3 style="margin:0 0 16px;">${q ? 'Edit question' : 'New question'}</h3>
       <label>Question text<textarea id="qtext" maxlength="300" rows="3">${q ? escapeHtml(q.text) : ''}</textarea></label>
+      <label style="display:flex; align-items:center; gap:8px; padding: 8px 0;">
+        <input type="checkbox" id="qtrivia" ${q?.is_trivia ? 'checked' : ''} style="width:auto;min-height:0;">
+        <span>This is a trivia question (mark a correct answer + side)</span>
+      </label>
+      <div id="triviaFields" style="display:${q?.is_trivia ? 'block' : 'none'};">
+        <label>Side tag
+          <select id="qside">
+            <option value="bride" ${q?.side_tag==='bride'?'selected':''}>${escapeHtml(quiz.bride_label || 'Bride')}</option>
+            <option value="groom" ${q?.side_tag==='groom'?'selected':''}>${escapeHtml(quiz.groom_label || 'Groom')}</option>
+            <option value="neutral" ${(!q || q.side_tag==='neutral')?'selected':''}>Neutral (counts toward neither side)</option>
+          </select>
+        </label>
+      </div>
       <label>Image (optional)<input type="file" id="qimg" accept="image/*"></label>
       <div style="margin-top:8px;">${q?.image_path ? `<img src="${q.image_path}" style="max-width:100%;border-radius:8px;">` : ''}</div>
-      <h4 style="margin:16px 0 8px;">Options</h4>
+      <h4 style="margin:16px 0 8px;">Options <span id="optsHint" style="font-family:'Inter';font-size:12px;color:var(--muted);font-weight:400;">${q?.is_trivia ? '— mark the correct one' : ''}</span></h4>
       <div id="opts"></div>
       <div style="display:flex; gap:8px; margin-top: 16px;">
         <button class="btn btn-primary" id="saveQ">${q ? 'Save' : 'Add'}</button>
@@ -144,21 +159,47 @@
       </div>
     `;
     const optsDiv = document.getElementById('opts');
-    let optsState = opts.map(o => ({ text: o.text || '' }));
+    let optsState = opts.map(o => ({ text: o.text || '', is_correct: !!o.is_correct }));
+    let isTrivia = !!q?.is_trivia;
+
     function renderOpts(arr) {
       optsDiv.innerHTML = arr.map((o, i) => `
-        <div style="display:flex; gap:8px; margin-bottom:8px;">
-          <input type="text" value="${escapeHtml(o.text || '')}" data-i="${i}" maxlength="120" placeholder="Option ${i+1}">
+        <div style="display:flex; gap:8px; margin-bottom:8px; align-items:center;">
+          <input type="text" value="${escapeHtml(o.text || '')}" data-i="${i}" maxlength="120" placeholder="Option ${i+1}" style="flex:1;">
+          ${isTrivia ? `<label style="display:flex;align-items:center;gap:4px;font-family:'Inter';font-size:14px;white-space:nowrap;">
+            <input type="radio" name="correct" data-i="${i}" ${o.is_correct?'checked':''} style="width:auto;min-height:0;"> correct
+          </label>` : ''}
         </div>
       `).join('') + (arr.length < 4 ? '<button class="btn" id="addOpt">+ Add option</button>' : '');
       const addBtn = document.getElementById('addOpt');
       if (addBtn) addBtn.onclick = () => { arr.push({ text: '' }); renderOpts(arr); };
     }
     renderOpts(optsState);
+
+    document.getElementById('qtrivia').onchange = (e) => {
+      isTrivia = e.target.checked;
+      document.getElementById('triviaFields').style.display = isTrivia ? 'block' : 'none';
+      document.getElementById('optsHint').textContent = isTrivia ? '— mark the correct one' : '';
+      // Re-snapshot current option text values so we don't lose typing on toggle
+      const inputs = optsDiv.querySelectorAll('input[type="text"]');
+      optsState = Array.from(inputs).map((el, i) => ({
+        text: el.value,
+        is_correct: optsState[i]?.is_correct
+      }));
+      renderOpts(optsState);
+    };
+
     document.getElementById('saveQ').onclick = async () => {
       const inputs = optsDiv.querySelectorAll('input[type="text"]');
-      optsState = Array.from(inputs).map(el => ({ text: el.value })).filter(o => o.text.trim());
+      const radios = optsDiv.querySelectorAll('input[type="radio"]');
+      optsState = Array.from(inputs).map((el, i) => ({
+        text: el.value,
+        is_correct: isTrivia ? (!!radios[i] && radios[i].checked) : false
+      })).filter(o => o.text.trim());
       if (optsState.length < 2) { alert('At least 2 options required.'); return; }
+      if (isTrivia && optsState.filter(o => o.is_correct).length !== 1) {
+        alert('Mark exactly one option correct.'); return;
+      }
       let image_path = q?.image_path || null;
       const file = document.getElementById('qimg').files[0];
       if (file) {
@@ -168,9 +209,11 @@
       }
       const body = {
         text: document.getElementById('qtext').value,
+        is_trivia: isTrivia,
         image_path,
         options: optsState
       };
+      if (isTrivia) body.side_tag = document.getElementById('qside').value;
       const url = q ? `/api/question/${q.id}?token=${token}` : `/api/quiz/${token}/question`;
       const method = q ? 'PUT' : 'POST';
       const res = await fetch(url, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });

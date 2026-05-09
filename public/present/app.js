@@ -22,6 +22,26 @@
     return f ? f.image_path : `/defaults/${side}-${st}.svg`;
   }
 
+  // If an option's text matches the configured bride/groom label, return that side; else null.
+  function optionSide(text) {
+    const t = String(text || '').trim().toLowerCase();
+    if (!t) return null;
+    if (t === String(quiz.bride_label || 'Bride').trim().toLowerCase()) return 'bride';
+    if (t === String(quiz.groom_label || 'Groom').trim().toLowerCase()) return 'groom';
+    return null;
+  }
+
+  // Pick a mood face for an option based on its share of votes vs the leader.
+  // share is in [0, 1] where 1 = leader.
+  function moodFor(share, hasAnyVotes) {
+    if (!hasAnyVotes) return 'neutral';
+    if (share >= 0.95) return 'winner';
+    if (share >= 0.65) return 'happy';
+    if (share >= 0.35) return 'neutral';
+    if (share >= 0.10) return 'sad';
+    return 'angry';
+  }
+
   // ── Bootstrap ─────────────────────────────────────────────
   async function start() {
     const r = await fetch(`/api/quiz?token=${encodeURIComponent(token)}`);
@@ -167,13 +187,21 @@
         ${cur.image_url ? `<img class="qimg" src="${cur.image_url}" alt="">` : ''}
       </div>
       <div class="opts" id="opts">
-        ${cur.options.map((o, i) => `
-          <div class="opt" data-id="${o.id}">
-            <span class="opt-letter">${letters[i]}</span>
-            <div class="opt-text">${escapeHtml(o.text)}</div>
-            <div class="opt-vote-fill" data-fill="${o.id}"></div>
-          </div>
-        `).join('')}
+        ${cur.options.map((o, i) => {
+          const side = optionSide(o.text);
+          const facePlaceholder = side
+            ? `<img class="opt-face" data-face="${o.id}" data-side="${side}" src="${faceUrl(side, 'neutral')}" alt="">`
+            : '<span></span>';
+          return `
+            <div class="opt" data-id="${o.id}">
+              <span class="opt-letter">${letters[i]}</span>
+              <div class="opt-text">${escapeHtml(o.text)}</div>
+              ${facePlaceholder}
+              <div class="opt-vote-fill" data-fill="${o.id}"></div>
+              <div class="opt-live-pct" data-pct="${o.id}">0%</div>
+            </div>
+          `;
+        }).join('')}
       </div>
       <div class="qprogress" id="qprogress"></div>
     `;
@@ -185,13 +213,36 @@
     if (!state || state.status !== 'active') return;
     setHints();
     const total = answerTotal || state.players.length || 0;
+    const totalVotes = Object.values(liveDistribution).reduce((a,b) => a+b, 0);
     const max = Math.max(1, ...Object.values(liveDistribution));
+    const cur = state.current_question || {};
+
     document.querySelectorAll('.opt-vote-fill').forEach(el => {
       const id = el.dataset.fill;
       const v = liveDistribution[id] || 0;
       el.style.transform = `scaleY(${v / max})`;
       el.classList.toggle('consensus', total > 0 && v / total > 0.5);
     });
+
+    document.querySelectorAll('.opt-live-pct').forEach(el => {
+      const id = el.dataset.pct;
+      const v = liveDistribution[id] || 0;
+      const pct = totalVotes > 0 ? Math.round((v / totalVotes) * 100) : 0;
+      el.textContent = `${pct}%`;
+    });
+
+    // Reactive faces: each face's mood = its share of votes.
+    document.querySelectorAll('.opt-face[data-face]').forEach(img => {
+      const id = img.dataset.face;
+      const side = img.dataset.side;
+      const v = liveDistribution[id] || 0;
+      const share = max > 0 ? v / max : 0;
+      const mood = moodFor(share, totalVotes > 0);
+      const newSrc = faceUrl(side, mood);
+      if (img.src.indexOf(newSrc.split('/').pop()) === -1) img.src = newSrc;
+      img.classList.toggle('winning-face', totalVotes > 0 && v === max && v > 0);
+    });
+
     updateProgressDots();
   }
 
@@ -205,7 +256,7 @@
     wrap.innerHTML = `${dots}<span class="count">${answerCount} / ${total}</span>`;
   }
 
-  // ── Reveal (poll mode: distribution only) ────────────────
+  // ── Reveal (handles both trivia and poll questions) ─────
   function renderReveal() {
     const cur = state.current_question;
     const r = lastReveal;
@@ -218,6 +269,10 @@
     for (const [id, n] of Object.entries(distMap)) {
       if (n > popularN) { popularN = n; popularId = id; }
     }
+    const isTrivia = !!cur.is_trivia;
+    const top5 = (r.leaderboard || []).slice(0, 5);
+    const tables = (r.table_leaderboard || []).slice(0, 5);
+    const showLeaderboard = isTrivia && top5.some(p => p.score > 0);
 
     const imgWrap = cur.image_url ? 'with-image' : '';
     root.innerHTML = `
@@ -227,20 +282,43 @@
       </div>
       <div class="opts">
         ${cur.options.map((o, i) => {
-          const isPopular = popularN > 0 && o.id === popularId;
+          const highlight = isTrivia ? (o.id === r.correct_option_id) : (popularN > 0 && o.id === popularId);
           const votes = distMap[o.id] || 0;
           const pct = Math.round((votes / totalVotes) * 100);
+          const dim = isTrivia && !highlight ? 'opacity:0.4;' : '';
+          const max = Math.max(1, ...Object.values(distMap));
+          const share = max > 0 ? votes / max : 0;
+          const side = optionSide(o.text);
+          const mood = side ? moodFor(share, totalVotes > 0) : null;
+          const face = side ? `<img class="opt-face ${votes === max && votes > 0 ? 'winning-face' : ''}" src="${faceUrl(side, mood)}" alt="">` : '<span></span>';
+          const fillPct = totalVotes > 0 ? (votes / totalVotes) * 100 : 0;
           return `
-            <div class="opt ${isPopular ? 'correct' : ''}">
+            <div class="opt ${highlight ? 'correct' : ''}" style="${dim}">
               <span class="opt-letter">${letters[i]}</span>
               <div class="opt-text">${escapeHtml(o.text)}</div>
-              <div class="opt-count">${pct}% (${votes})</div>
+              ${face}
+              <div class="opt-vote-fill" style="transform: scaleY(${fillPct/100});${highlight && !isTrivia ? 'background: var(--gold); opacity: 0.42;' : ''}"></div>
+              <div class="opt-live-pct">${pct}%</div>
             </div>`;
         }).join('')}
       </div>
       <p class="enter-2" style="text-align:center;font-family:'Inter';color:var(--muted);font-size:18px;">
-        ${popularN} of ${totalVotes} ${totalVotes === 1 ? 'vote' : 'votes'} for the most popular answer
+        ${isTrivia
+          ? `${distMap[r.correct_option_id] || 0} of ${totalVotes} got it right`
+          : `${popularN} of ${totalVotes} ${totalVotes === 1 ? 'vote' : 'votes'} for the most popular answer`}
       </p>
+      ${showLeaderboard ? `
+        <div class="reveal-extra enter-3">
+          <div class="lb">
+            <h3>Top players</h3>
+            <ol>${top5.map(p => `<li><strong>${escapeHtml(p.name)}</strong> · ${p.score}</li>`).join('')}</ol>
+          </div>
+          <div class="lb">
+            <h3>Top ${escapeHtml(quiz.group_label || 'tables')}</h3>
+            <ol>${tables.map(t => `<li>${escapeHtml(t.group_value)} · ${t.score}</li>`).join('')}</ol>
+          </div>
+        </div>
+      ` : ''}
     `;
   }
 

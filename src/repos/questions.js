@@ -1,13 +1,13 @@
 const { randomUUID } = require('crypto');
 const { getDb } = require('../db');
 
-function create({ quiz_id, text, image_path, side_tag, options }) {
+function create({ quiz_id, text, image_path, side_tag, is_trivia, options }) {
   const db = getDb();
   const tx = db.transaction(() => {
     const maxPos = db.prepare('SELECT COALESCE(MAX(position), 0) AS m FROM questions WHERE quiz_id = ?').get(quiz_id).m;
     const id = randomUUID();
-    db.prepare(`INSERT INTO questions (id, quiz_id, position, text, image_path, side_tag) VALUES (?,?,?,?,?,?)`)
-      .run(id, quiz_id, maxPos + 1, text, image_path ?? null, side_tag);
+    db.prepare(`INSERT INTO questions (id, quiz_id, position, text, image_path, side_tag, is_trivia) VALUES (?,?,?,?,?,?,?)`)
+      .run(id, quiz_id, maxPos + 1, text, image_path ?? null, side_tag, is_trivia ? 1 : 0);
     options.forEach((o, i) => {
       db.prepare(`INSERT INTO options (id, question_id, position, text, is_correct) VALUES (?,?,?,?,?)`)
         .run(randomUUID(), id, i + 1, o.text, o.is_correct ? 1 : 0);
@@ -17,12 +17,13 @@ function create({ quiz_id, text, image_path, side_tag, options }) {
   return { id: tx() };
 }
 
-function update(id, { text, image_path, side_tag }) {
+function update(id, { text, image_path, side_tag, is_trivia }) {
   const db = getDb();
   const sets = [], values = [];
   if (text !== undefined)       { sets.push('text = ?');       values.push(text); }
   if (image_path !== undefined) { sets.push('image_path = ?'); values.push(image_path); }
   if (side_tag !== undefined)   { sets.push('side_tag = ?');   values.push(side_tag); }
+  if (is_trivia !== undefined)  { sets.push('is_trivia = ?');  values.push(is_trivia ? 1 : 0); }
   if (!sets.length) return;
   values.push(id);
   db.prepare(`UPDATE questions SET ${sets.join(', ')} WHERE id = ?`).run(...values);

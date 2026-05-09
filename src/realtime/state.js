@@ -43,6 +43,8 @@ function projectQuestion(q, includeCorrect) {
     position: q.position,
     text: q.text,
     image_url: q.image_path,
+    is_trivia: !!q.is_trivia,
+    side_tag: q.side_tag || 'neutral',
     options: q.options.map(o => ({
       id: o.id, position: o.position, text: o.text,
       ...(includeCorrect ? { is_correct: !!o.is_correct } : {})
