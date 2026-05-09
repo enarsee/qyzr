@@ -278,7 +278,19 @@
       if (file) {
         const fd = new FormData(); fd.append('image', file);
         const up = await fetch('/api/upload', { method: 'POST', body: fd });
-        if (up.ok) image_path = (await up.json()).path;
+        if (up.ok) {
+          image_path = (await up.json()).path;
+        } else {
+          // Surface the failure instead of silently saving without the image.
+          const j = await up.json().catch(() => ({}));
+          const msg = j.error === 'unsupported_format'
+            ? 'That image format isn\'t supported. Try a JPG or PNG (HEIC photos from iPhones often need to be converted).'
+            : j.error === 'image_invalid'
+              ? 'The file doesn\'t look like a valid image.'
+              : 'Image upload failed (' + (j.error || up.status) + '). Try again or pick a different photo.';
+          alert(msg);
+          return; // bail — don't save the question with no image
+        }
       }
       const body = {
         text: document.getElementById('qtext').value,
