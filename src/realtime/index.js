@@ -26,7 +26,7 @@ function attach(httpServer) {
   io.on('connection', (socket) => {
     const ctx = socket.data.ctx;
     const isHost = ctx.role === 'host';
-    const bucket = makeEmitBucket({ rate: isHost ? 10 : 5, burst: isHost ? 20 : 10 });
+    const bucket = makeEmitBucket({ rate: isHost ? 50 : 30, burst: isHost ? 200 : 100 });
     socket.use((_packet, next) => bucket() ? next() : next(new Error('rate_limited')));
 
     socket.on('disconnect', () => {
