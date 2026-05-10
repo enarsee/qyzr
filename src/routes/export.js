@@ -13,6 +13,15 @@ function faceUrl(quizFaces, side, state) {
   return f ? f.image_path : `/defaults/${side}-${state}.svg`;
 }
 
+// If option text matches the configured bride/groom label, return that side.
+function optionSide(text, quiz) {
+  const t = String(text || '').trim().toLowerCase();
+  if (!t) return null;
+  if (t === String(quiz.bride_label || 'Bride').trim().toLowerCase()) return 'bride';
+  if (t === String(quiz.groom_label || 'Groom').trim().toLowerCase()) return 'groom';
+  return null;
+}
+
 const router = express.Router();
 
 function escapeHtml(s) {
@@ -98,7 +107,7 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
   .q-img { display: block; max-width: 480px; max-height: 380px; width: auto; height: auto; border-radius: 10px; object-fit: contain; margin: 0 auto 14px; background: var(--bg); }
   .q-tag { display: inline-block; background: var(--bg); border-radius: 999px; padding: 2px 10px; font-family: 'Inter'; font-size: 11px; color: var(--muted); margin-left: 8px; vertical-align: middle; }
   .q-tag.trivia { background: #FFF8E1; color: var(--gold); }
-  .opt-row { display: grid; grid-template-columns: auto 1fr auto auto; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px dashed #E3D9CC; }
+  .opt-row { display: grid; grid-template-columns: auto 1fr auto auto auto; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px dashed #E3D9CC; }
   .opt-row:last-child { border-bottom: none; }
   .opt-letter { font-family: 'Inter'; font-weight: 700; color: var(--muted); font-size: 14px; min-width: 16px; }
   .opt-text { font-family: 'Cormorant Infant', serif; }
@@ -109,6 +118,10 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
   .opt-bar > div { height: 100%; background: var(--rose); }
   .opt-row.correct .opt-bar > div { background: var(--gold); }
   .opt-count { font-family: 'Inter'; font-weight: 600; font-size: 14px; color: var(--ink); min-width: 80px; text-align: right; }
+  .opt-face-mini { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; object-position: 50% 25%; background: var(--surface); border: 2px solid transparent; }
+  .opt-face-mini.win { border-color: var(--gold); }
+  .opt-face-spacer { width: 36px; height: 36px; }
+  @media print { .opt-face-mini.win { border-color: #444; } }
   .lb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 24px; page-break-inside: avoid; }
   @media (max-width: 700px) { .lb-grid { grid-template-columns: 1fr; } }
   .lb { background: var(--surface); padding: 18px 22px; border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
@@ -194,12 +207,23 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
           const isCorrect = q.is_trivia && correctOpt && o.id === correctOpt.id;
           const isPopular = !q.is_trivia && popularId === o.id && popularN > 0;
           const cls = isCorrect ? 'correct' : isPopular ? 'popular' : '';
+          // Face sprite when option text matches bride/groom — winner mood for
+          // the leading vote-getter in this question, sad mood for the others.
+          const side = optionSide(o.text, quiz);
+          let faceCell = '<span class="opt-face-spacer"></span>';
+          if (side && total > 0) {
+            const isLeader = popularId === o.id && popularN > 0;
+            const mood = isLeader ? 'winner' : 'sad';
+            const winCls = isLeader ? ' win' : '';
+            faceCell = `<img class="opt-face-mini${winCls}" src="${faceUrl(quizFaces, side, mood)}" alt="">`;
+          }
           return `
             <div class="opt-row ${cls}" style="position:relative;">
               <span class="opt-letter">${'ABCD'[oi]}.</span>
               <span class="opt-text">${escapeHtml(o.text)}</span>
               <div class="opt-bar"><div style="width: ${pct}%;"></div></div>
               <span class="opt-count">${pct}% · ${v}</span>
+              ${faceCell}
             </div>`;
         }).join('')}
       </div>
