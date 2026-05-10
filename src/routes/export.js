@@ -149,8 +149,38 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
     .filter(p => p.groomOpps >= MIN_OPPS && p.ratio >= LOYALTY_THRESHOLD)
     .sort((a, b) => b.ratio - a.ratio || b.groomPicks - a.groomPicks || a.name.localeCompare(b.name))
     .slice(0, 8);
+  // ── Fastest answerers ──────────────────────────────────
+  // For each question, the first to answer becomes t=0; everyone else's
+  // delta is measured from there. Average across questions they answered
+  // (min 3 to qualify). Lowest avg delta = fastest.
+  const speedRows = db.prepare(`
+    SELECT a.question_id, a.player_id, p.name, p.group_value, a.answered_at
+    FROM answers a
+    JOIN players p ON a.player_id = p.id
+    WHERE a.game_id = ? AND p.kicked = 0
+    ORDER BY a.question_id, a.answered_at ASC
+  `).all(game.id);
+  const firstByQ = {};
+  for (const r of speedRows) {
+    if (firstByQ[r.question_id] == null) firstByQ[r.question_id] = r.answered_at;
+  }
+  const speedAgg = {};
+  for (const r of speedRows) {
+    const delta = r.answered_at - firstByQ[r.question_id];
+    const s = speedAgg[r.player_id] ||= { name: r.name, group: r.group_value, total: 0, count: 0 };
+    s.total += delta;
+    s.count += 1;
+  }
+  const MIN_ANSWERS_FOR_SPEED = 3;
+  const fastestPlayers = Object.values(speedAgg)
+    .filter(s => s.count >= MIN_ANSWERS_FOR_SPEED)
+    .map(s => ({ ...s, avgMs: s.total / s.count }))
+    .sort((a, b) => a.avgMs - b.avgMs)
+    .slice(0, 5);
+
   const hasStatsSection = topGuessPlayers.length > 0 || noGuessPlayers.length > 0
-    || teamBride.length > 0 || teamGroom.length > 0 || guessTables.length > 0;
+    || teamBride.length > 0 || teamGroom.length > 0 || guessTables.length > 0
+    || fastestPlayers.length > 0;
 
   // Faces for the VS panel — winner gets 'winner' state, loser 'sad', tie both 'neutral'.
   const quizFaces = faces.byQuiz(quiz.id);
@@ -369,6 +399,17 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
           <h3>Most active players</h3>
           <p class="blurb">By number of votes cast.</p>
           <ol>${topGuessPlayers.map(p => `<li><strong>${escapeHtml(p.name)}</strong> · ${p.guesses} ${p.guesses === 1 ? 'vote' : 'votes'}${p.group_value ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(p.group_value)}</span>` : ''}</li>`).join('')}</ol>
+        </div>
+      ` : ''}
+      ${fastestPlayers.length > 0 ? `
+        <div class="stat-card">
+          <h3>⚡ Trigger fingers</h3>
+          <p class="blurb">Fastest answerers — average lag behind the first responder per question (min 3 answers).</p>
+          <ol>${fastestPlayers.map(p => {
+            const ms = p.avgMs;
+            const lbl = ms < 1000 ? `+${Math.round(ms)} ms` : `+${(ms / 1000).toFixed(2)} s`;
+            return `<li><strong>${escapeHtml(p.name)}</strong> · <span class="pill">${lbl} avg</span> <span class="pill">${p.count} ans</span>${p.group ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(p.group)}</span>` : ''}</li>`;
+          }).join('')}</ol>
         </div>
       ` : ''}
       ${guessTables.length > 0 ? `
