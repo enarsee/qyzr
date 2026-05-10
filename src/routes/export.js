@@ -184,20 +184,10 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
   // question, the dissenting choice, and the brave/foolish guest who cast
   // it. Limit to the most lopsided cases (top 5 by majority size).
   const LONE_WOLF_MIN_OTHERS = 5;
-  const distRows = db.prepare(`
-    SELECT a.question_id, a.option_id, COUNT(*) AS n
-    FROM answers a
-    WHERE a.game_id = ?
-    GROUP BY a.question_id, a.option_id
-  `).all(game.id);
-  const distByQOpt = {};
-  for (const r of distRows) {
-    (distByQOpt[r.question_id] ||= {})[r.option_id] = r.n;
-  }
   const loneWolves = [];
   for (const q of qs) {
-    const counts = distByQOpt[q.id] || {};
-    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    const counts = distByQ[q.id] || {};
+    const total = totalsByQ[q.id] || 0;
     if (total < LONE_WOLF_MIN_OTHERS + 1) continue;
     for (const o of q.options) {
       const n = counts[o.id] || 0;
