@@ -73,6 +73,71 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
   const brideWins = sideScores.bride > sideScores.groom;
   const groomWins = sideScores.groom > sideScores.bride;
 
+  // ── Statistics queries ──────────────────────────────────
+  // Players ranked by total guesses (whether right or wrong)
+  const guessLb = db.prepare(`
+    SELECT p.id, p.name, p.group_value, COUNT(a.id) AS guesses
+    FROM players p
+    LEFT JOIN answers a ON a.player_id = p.id AND a.game_id = p.game_id
+    WHERE p.game_id = ? AND p.kicked = 0
+    GROUP BY p.id
+    ORDER BY guesses DESC, p.joined_at ASC
+  `).all(game.id);
+  const topGuessPlayers = guessLb.filter(p => p.guesses > 0).slice(0, 5);
+  const noGuessPlayers = guessLb.filter(p => p.guesses === 0);
+
+  // Tables ranked by total guesses across their members
+  const guessTables = db.prepare(`
+    SELECT p.group_value, COUNT(a.id) AS guesses, COUNT(DISTINCT p.id) AS players
+    FROM players p
+    LEFT JOIN answers a ON a.player_id = p.id AND a.game_id = p.game_id
+    WHERE p.game_id = ? AND p.kicked = 0
+    GROUP BY p.group_value
+    ORDER BY guesses DESC, p.group_value ASC
+  `).all(game.id).filter(t => t.guesses > 0).slice(0, 5);
+
+  // Cross-reference: which players always picked bride/groom when offered.
+  // Pull every answer joined with its option text + question id.
+  const allChoices = db.prepare(`
+    SELECT p.id AS player_id, p.name, p.group_value,
+           a.question_id, LOWER(TRIM(o.text)) AS chosen
+    FROM answers a
+    JOIN players p ON a.player_id = p.id
+    JOIN options o ON a.option_id = o.id
+    WHERE a.game_id = ? AND p.kicked = 0
+  `).all(game.id);
+  const brideKey = String(quiz.bride_label || 'Bride').trim().toLowerCase();
+  const groomKey = String(quiz.groom_label || 'Groom').trim().toLowerCase();
+  // Per question: does it have a bride-named / groom-named option?
+  const qHasBride = {}, qHasGroom = {};
+  for (const q of qs) {
+    for (const o of q.options) {
+      const t = String(o.text || '').trim().toLowerCase();
+      if (t === brideKey) qHasBride[q.id] = true;
+      if (t === groomKey) qHasGroom[q.id] = true;
+    }
+  }
+  // Aggregate per player
+  const perPlayer = {};
+  for (const r of allChoices) {
+    const k = r.player_id;
+    const p = perPlayer[k] ||= { name: r.name, group: r.group_value, brideAnswers: [], groomAnswers: [] };
+    if (qHasBride[r.question_id]) p.brideAnswers.push(r.chosen);
+    if (qHasGroom[r.question_id]) p.groomAnswers.push(r.chosen);
+  }
+  const alwaysBride = [];
+  const alwaysGroom = [];
+  for (const p of Object.values(perPlayer)) {
+    if (p.brideAnswers.length >= 2 && p.brideAnswers.every(c => c === brideKey)) {
+      alwaysBride.push(p);
+    }
+    if (p.groomAnswers.length >= 2 && p.groomAnswers.every(c => c === groomKey)) {
+      alwaysGroom.push(p);
+    }
+  }
+  const hasStatsSection = topGuessPlayers.length > 0 || noGuessPlayers.length > 0
+    || alwaysBride.length > 0 || alwaysGroom.length > 0 || guessTables.length > 0;
+
   // Faces for the VS panel — winner gets 'winner' state, loser 'sad', tie both 'neutral'.
   const quizFaces = faces.byQuiz(quiz.id);
   const brideMood = brideWins ? 'winner' : groomWins ? 'sad' : 'neutral';
@@ -128,6 +193,16 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
   .lb h3 { font-family: 'Inter'; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 8px; }
   .lb ol { margin: 0; padding-left: 20px; font-family: 'Cormorant Infant', serif; font-size: 18px; }
   .lb li { padding: 3px 0; }
+
+  .stats-h { font-family: 'Great Vibes', cursive; font-size: 56px; color: ${quiz.accent_color}; text-align: center; margin: 56px 0 8px; line-height: 1; }
+  .stats-h + .stats-sub { text-align: center; color: var(--muted); font-family: 'Inter'; font-size: 13px; margin: 0 0 24px; text-transform: uppercase; letter-spacing: 0.12em; }
+  .stat-card { background: var(--surface); padding: 18px 22px; border-radius: var(--radius-md); box-shadow: var(--shadow-sm); page-break-inside: avoid; }
+  .stat-card h3 { font-family: 'Inter'; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+  .stat-card .blurb { font-family: 'Cormorant Infant', serif; font-size: 14px; color: var(--muted); margin: 0 0 10px; font-style: italic; }
+  .stat-card ol, .stat-card ul { margin: 0; padding-left: 20px; font-family: 'Cormorant Infant', serif; font-size: 17px; }
+  .stat-card li { padding: 2px 0; }
+  .stat-card .pill { display: inline-block; background: var(--bg); border-radius: 999px; padding: 1px 8px; font-family: 'Inter'; font-size: 11px; color: var(--muted); margin-left: 6px; vertical-align: middle; }
+  .stat-mini-face { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; object-position: 50% 25%; background: var(--surface); vertical-align: middle; }
   .vs { display: grid; grid-template-columns: 1fr auto 1fr; gap: 24px; align-items: center; padding: 24px 20px; background: var(--surface); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); margin-top: 24px; page-break-inside: avoid; }
   .vs-side { text-align: center; font-family: 'Inter'; }
   .vs-face-wrap { position: relative; display: inline-block; }
@@ -269,6 +344,48 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
       </div>
     </div>
     ${winningSide ? `<p style="text-align:center;font-family:'Cormorant Infant',serif;font-size:20px;margin-top:14px;color:var(--ink);"><strong>${escapeHtml(winningSide)}</strong> takes the night.</p>` : sideTotal > 0 ? `<p style="text-align:center;font-family:'Cormorant Infant',serif;font-size:18px;margin-top:14px;color:var(--muted);">A perfect tie.</p>` : ''}
+  ` : ''}
+
+  ${hasStatsSection ? `
+    <h2 class="stats-h">Statistics</h2>
+    <p class="stats-sub">A look behind the votes</p>
+    <div class="lb-grid">
+      ${topGuessPlayers.length > 0 ? `
+        <div class="stat-card">
+          <h3>Most active players</h3>
+          <p class="blurb">By number of votes cast.</p>
+          <ol>${topGuessPlayers.map(p => `<li><strong>${escapeHtml(p.name)}</strong> · ${p.guesses} ${p.guesses === 1 ? 'vote' : 'votes'}${p.group_value ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(p.group_value)}</span>` : ''}</li>`).join('')}</ol>
+        </div>
+      ` : ''}
+      ${guessTables.length > 0 ? `
+        <div class="stat-card">
+          <h3>Most active ${escapeHtml((quiz.group_label || 'tables').toLowerCase())}</h3>
+          <p class="blurb">Total votes across the ${escapeHtml((quiz.group_label || 'table').toLowerCase())}.</p>
+          <ol>${guessTables.map(t => `<li>${escapeHtml(quiz.group_label || 'Table')} <strong>${escapeHtml(t.group_value)}</strong> · ${t.guesses} ${t.guesses === 1 ? 'vote' : 'votes'} <span class="pill">${t.players} ${t.players === 1 ? 'player' : 'players'}</span></li>`).join('')}</ol>
+        </div>
+      ` : ''}
+      ${alwaysBride.length > 0 ? `
+        <div class="stat-card">
+          <h3><img class="stat-mini-face" src="${faceUrl(quizFaces, 'bride', 'happy')}" alt=""> Team ${escapeHtml(quiz.bride_label)}</h3>
+          <p class="blurb">Picked ${escapeHtml(quiz.bride_label)} every time she was an option.</p>
+          <ul style="list-style:none;padding-left:0;">${alwaysBride.slice(0, 12).map(p => `<li>· <strong>${escapeHtml(p.name)}</strong>${p.group ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(p.group)}</span>` : ''}</li>`).join('')}</ul>
+        </div>
+      ` : ''}
+      ${alwaysGroom.length > 0 ? `
+        <div class="stat-card">
+          <h3><img class="stat-mini-face" src="${faceUrl(quizFaces, 'groom', 'happy')}" alt=""> Team ${escapeHtml(quiz.groom_label)}</h3>
+          <p class="blurb">Picked ${escapeHtml(quiz.groom_label)} every time he was an option.</p>
+          <ul style="list-style:none;padding-left:0;">${alwaysGroom.slice(0, 12).map(p => `<li>· <strong>${escapeHtml(p.name)}</strong>${p.group ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(p.group)}</span>` : ''}</li>`).join('')}</ul>
+        </div>
+      ` : ''}
+      ${noGuessPlayers.length > 0 ? `
+        <div class="stat-card" style="grid-column: 1 / -1;">
+          <h3>The shy ones</h3>
+          <p class="blurb">Joined but never voted (${noGuessPlayers.length} ${noGuessPlayers.length === 1 ? 'guest' : 'guests'}).</p>
+          <p style="font-family:'Cormorant Infant',serif;font-size:17px;margin:0;">${noGuessPlayers.map(p => `<span style="display:inline-block;margin-right:14px;">${escapeHtml(p.name)}${p.group_value ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(p.group_value)}</span>` : ''}</span>`).join('')}</p>
+        </div>
+      ` : ''}
+    </div>
   ` : ''}
 
   <div class="footer">
