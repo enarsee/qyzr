@@ -24,6 +24,7 @@ function buildApp() {
   app.use(require('./routes/upload'));
   app.use(require('./routes/export'));
   app.use(require('./routes/admin'));
+  app.use(require('./routes/ai'));
   app.use(require('./routes/pages'));
   return app;
 }

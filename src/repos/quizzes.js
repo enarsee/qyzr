@@ -22,7 +22,7 @@ function byId(id) {
 }
 
 function update(id, fields) {
-  const allowed = ['name', 'bride_label', 'groom_label', 'group_label', 'accent_color', 'hero_image_path'];
+  const allowed = ['name', 'bride_label', 'groom_label', 'group_label', 'accent_color', 'hero_image_path', 'couple_image_path'];
   const set = [];
   const values = [];
   for (const k of allowed) {

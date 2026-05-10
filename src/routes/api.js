@@ -77,7 +77,9 @@ router.get('/api/quiz/by-room/:code', (req, res) => {
     const code = v.validateRoomCode(req.params.code);
     const q = quizzes.byRoomCode(code);
     if (!q) return res.status(404).json({ error: 'not_found' });
-    const { creator_token, ...pub } = q; void creator_token;
+    // Strip creator_token + couple_image_path from the public payload —
+    // both are admin-only references that guests don't need to see.
+    const { creator_token, couple_image_path, ...pub } = q; void creator_token; void couple_image_path;
     res.json({ ...pub, faces: faces.byQuiz(q.id) });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -98,6 +100,11 @@ router.put('/api/quiz', (req, res) => {
       if (req.body.hero_image_path !== null && !SAFE_IMAGE_PATH.test(String(req.body.hero_image_path)))
         throw new Error('hero_image_path_invalid');
       fields.hero_image_path = req.body.hero_image_path;
+    }
+    if (req.body.couple_image_path !== undefined) {
+      if (req.body.couple_image_path !== null && !SAFE_IMAGE_PATH.test(String(req.body.couple_image_path)))
+        throw new Error('couple_image_path_invalid');
+      fields.couple_image_path = req.body.couple_image_path;
     }
   } catch (e) { return res.status(400).json({ error: e.message }); }
   quizzes.update(q.id, fields);

@@ -8,6 +8,10 @@ const { LRUCache } = require('lru-cache');
 const createLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 200, standardHeaders: true });   // quiz creation: 200/hr
 const playLimiter   = rateLimit({ windowMs: 60 * 1000,      max: 500, standardHeaders: true });   // /play hits: 500/min/IP
 const uploadLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 500, standardHeaders: true });   // image uploads: 500/hr
+// AI image generation is expensive (latency + $$ via Gemini). Cap per-IP at
+// a number that supports a reasonable single-host editing session but
+// catches loops or accidental retries.
+const aiLimiter     = rateLimit({ windowMs: 60 * 60 * 1000, max: 60, standardHeaders: true });
 
 // Socket connection rate limiter (per-IP)
 const SOCKET_CONN_PER_MIN = 500;
@@ -35,4 +39,4 @@ function makeEmitBucket({ rate = 20, burst = 60 } = {}) {
   };
 }
 
-module.exports = { createLimiter, playLimiter, uploadLimiter, socketConnectionAllowed, makeEmitBucket };
+module.exports = { createLimiter, playLimiter, uploadLimiter, aiLimiter, socketConnectionAllowed, makeEmitBucket };

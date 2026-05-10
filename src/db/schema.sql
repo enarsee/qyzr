@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS quizzes (
   group_label TEXT NOT NULL DEFAULT 'Table',
   accent_color TEXT NOT NULL DEFAULT '#C8587A',
   hero_image_path TEXT,
+  couple_image_path TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );

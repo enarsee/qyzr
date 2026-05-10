@@ -233,7 +233,27 @@
         </label>
       </div>
       <label>Image (optional)<input type="file" id="qimg" accept="image/*"></label>
-      <div style="margin-top:8px;">${q?.image_path ? `<img src="${q.image_path}" style="max-width:100%;border-radius:8px;">` : ''}</div>
+      <div style="margin-top:8px;" id="qimgPreview">${q?.image_path ? `<img src="${q.image_path}" style="max-width:100%;border-radius:8px;">` : ''}</div>
+      ${q ? `
+        <details class="card" style="margin-top:12px; background: rgba(200,88,122,0.04); border: 1px dashed rgba(200,88,122,0.3); padding: 12px 14px;">
+          <summary style="cursor:pointer; font-family:'Inter'; font-size:14px; font-weight:600; color:var(--ink);">${WQ_ICONS.sparkles || '✨'} Generate scene with AI</summary>
+          <p style="font-family:'Inter'; font-size:13px; color:var(--muted); margin: 10px 0 8px;">Describes a scene featuring the couple from your reference photo. Takes 10–25s.</p>
+          ${quiz.couple_image_path ? '' : '<p style="font-family:\'Inter\'; font-size:13px; color:var(--error); margin: 0 0 10px;">Upload a couple reference photo in Branding first.</p>'}
+          <label style="margin: 0 0 8px;">
+            <span style="font-size:13px; font-weight:600;">Scene description</span>
+            <textarea id="aiScene" rows="2" maxlength="500" placeholder="e.g. on a snowy mountain, sharing a laugh under fairy lights" ${quiz.couple_image_path ? '' : 'disabled'}></textarea>
+          </label>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px;">
+            <select id="aiStyle" style="max-width: 200px;" ${quiz.couple_image_path ? '' : 'disabled'}>
+              <option value="photorealistic">Photorealistic</option>
+              <option value="studio">Studio portrait</option>
+              <option value="whimsical">Whimsical / cartoon</option>
+            </select>
+            <button class="btn btn-primary" id="aiGenBtn" type="button" ${quiz.couple_image_path ? '' : 'disabled'}>Generate</button>
+            <span id="aiGenMsg" style="font-family:'Inter'; font-size:13px; color:var(--muted);"></span>
+          </div>
+        </details>
+      ` : ''}
       <h4 style="margin:16px 0 8px;">Options <span id="optsHint" style="font-family:'Inter';font-size:12px;color:var(--muted);font-weight:400;">${q?.is_trivia ? '— mark the correct one' : ''}</span></h4>
       <div id="opts"></div>
       <div style="display:flex; gap:8px; margin-top: 16px;">
@@ -271,6 +291,56 @@
       }));
       renderOpts(optsState);
     };
+
+    // AI scene generation (only available on existing questions where we
+    // already have a qid to attach the result to).
+    if (q) {
+      const aiBtn = document.getElementById('aiGenBtn');
+      if (aiBtn) {
+        aiBtn.onclick = async () => {
+          const sceneEl = document.getElementById('aiScene');
+          const styleEl = document.getElementById('aiStyle');
+          const msgEl = document.getElementById('aiGenMsg');
+          const previewEl = document.getElementById('qimgPreview');
+          const scene = (sceneEl?.value || '').trim();
+          if (scene.length < 3) { msgEl.textContent = 'Describe the scene first.'; return; }
+          aiBtn.disabled = true;
+          msgEl.style.color = 'var(--muted)';
+          msgEl.textContent = 'Generating… (10–25s)';
+          try {
+            const r = await fetch(`/api/quiz/${token}/q/${q.id}/generate-image`, {
+              method: 'POST', headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ scene, style: styleEl?.value || 'photorealistic' }),
+            });
+            if (!r.ok) {
+              const j = await r.json().catch(() => ({}));
+              const msg = ({
+                api_key_missing: 'Gemini key not set. Visit /admin/secrets.',
+                couple_photo_missing: 'Upload a couple reference photo first.',
+                api_key_invalid: 'Gemini key is invalid — update it at /admin/secrets.',
+                rate_limited: 'Rate limit hit — try again in a minute.',
+                content_blocked: 'Gemini blocked that prompt — try rephrasing.',
+                no_image_returned: 'Gemini returned no image. Try a more specific scene.',
+              })[j.error] || (j.error ? `Failed: ${j.error}` : 'Generation failed.');
+              msgEl.style.color = 'var(--error)';
+              msgEl.textContent = msg;
+              return;
+            }
+            const { image_path } = await r.json();
+            previewEl.innerHTML = `<img src="${image_path}" style="max-width:100%;border-radius:8px;">`;
+            msgEl.style.color = 'var(--success)';
+            msgEl.textContent = 'Done.';
+            // Reflect into in-memory question so a later save preserves it.
+            q.image_path = image_path;
+          } catch (e) {
+            msgEl.style.color = 'var(--error)';
+            msgEl.textContent = 'Network error.';
+          } finally {
+            aiBtn.disabled = false;
+          }
+        };
+      }
+    }
 
     document.getElementById('saveQ').onclick = async () => {
       const inputs = optsDiv.querySelectorAll('input[type="text"]');
@@ -393,6 +463,15 @@
         <input type="file" id="heroFile" accept="image/*">
       </div>
 
+      <h4 style="margin: 16px 0 8px;">Couple reference photo <span style="font-family:'Inter';font-size:12px;color:var(--muted);font-weight:400;">— for AI scene generation</span></h4>
+      <p style="color: var(--muted); font-size: 14px; margin: 0 0 12px;">
+        Used as the visual reference when generating per-question images via Gemini. A clear photo of you both together works best.
+      </p>
+      <div style="display:flex; gap: 12px; align-items: center; margin-bottom: 24px;">
+        ${quiz.couple_image_path ? `<img src="${quiz.couple_image_path}" style="width: 120px; height: 80px; object-fit: cover; border-radius: 8px;">` : '<div style="width:120px;height:80px;background:var(--bg);border-radius:8px;display:grid;place-items:center;color:var(--muted);font-family:Inter;font-size:11px;">no photo</div>'}
+        <input type="file" id="coupleFile" accept="image/*">
+      </div>
+
       <h4 style="margin: 16px 0 8px;">Couple faces <span style="font-family:'Inter';font-size:12px;color:var(--muted);font-weight:400;">— optional</span></h4>
       <p style="color: var(--muted); font-size: 14px; margin: 0 0 12px;">
         Used in the VS panel after trivia questions. Upload one photo per mood per side, or leave them — cartoon defaults are shown otherwise.
@@ -434,6 +513,21 @@
       document.getElementById('faceMsg').textContent = '';
       await loadQuiz();
       toast('Hero image saved');
+    });
+
+    document.getElementById('coupleFile').addEventListener('change', async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      const fd = new FormData(); fd.append('image', f);
+      const up = await fetch('/api/upload', { method: 'POST', body: fd });
+      if (!up.ok) { document.getElementById('faceMsg').textContent = 'Upload failed'; return; }
+      const { path } = await up.json();
+      await fetch(`/api/quiz?token=${token}`, {
+        method: 'PUT', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ couple_image_path: path })
+      });
+      document.getElementById('faceMsg').textContent = '';
+      await loadQuiz();
+      toast('Couple photo saved');
     });
 
     // Wire each face upload input

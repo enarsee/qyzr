@@ -16,9 +16,16 @@ function open(file) {
 
 // Lightweight, idempotent migrations for additive columns on existing DBs.
 function applyAdditiveMigrations(db) {
-  const cols = db.prepare("PRAGMA table_info(questions)").all().map(c => c.name);
-  if (!cols.includes('is_trivia')) {
+  const qCols = db.prepare("PRAGMA table_info(questions)").all().map(c => c.name);
+  if (!qCols.includes('is_trivia')) {
     db.exec("ALTER TABLE questions ADD COLUMN is_trivia INTEGER NOT NULL DEFAULT 0");
+  }
+  const quizCols = db.prepare("PRAGMA table_info(quizzes)").all().map(c => c.name);
+  // couple_image_path: full couple photo used as a reference for AI image
+  // generation (question scenes, sprite packs). Distinct from hero_image_path
+  // which is the public lobby/landing photo.
+  if (!quizCols.includes('couple_image_path')) {
+    db.exec("ALTER TABLE quizzes ADD COLUMN couple_image_path TEXT");
   }
 }
 
