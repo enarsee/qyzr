@@ -147,6 +147,7 @@
           </div>
           <div class="qlist" id="qlist"></div>
           <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #E3D9CC; display:flex; gap: 8px; flex-wrap: wrap;">
+            <a class="btn" id="exportLastBtn" target="_blank" rel="noopener" style="background: transparent; box-shadow: none; color: var(--ink);" href="/export/${token}">📄 Export last game</a>
             <button class="btn" id="resetGameBtn" style="background: transparent; box-shadow: none; color: var(--ink);">${WQ_ICONS.chevron} Reset game data</button>
             <button class="btn" id="deleteQuizBtn" style="color: var(--error); background: transparent; box-shadow: none;">${WQ_ICONS.trash} Delete this quiz permanently</button>
           </div>

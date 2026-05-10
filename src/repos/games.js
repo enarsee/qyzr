@@ -13,6 +13,9 @@ function byId(id) {
 function activeForQuiz(quiz_id) {
   return getDb().prepare("SELECT * FROM games WHERE quiz_id = ? AND status != 'finished' ORDER BY started_at DESC LIMIT 1").get(quiz_id);
 }
+function lastFinishedForQuiz(quiz_id) {
+  return getDb().prepare("SELECT * FROM games WHERE quiz_id = ? AND status = 'finished' ORDER BY finished_at DESC LIMIT 1").get(quiz_id);
+}
 function setStatus(id, status, currentQuestionId) {
   const db = getDb();
   const ts = status === 'finished' ? Date.now() : null;
@@ -20,4 +23,4 @@ function setStatus(id, status, currentQuestionId) {
     .run(status, currentQuestionId ?? null, ts, id);
 }
 
-module.exports = { create, byId, activeForQuiz, setStatus };
+module.exports = { create, byId, activeForQuiz, lastFinishedForQuiz, setStatus };
