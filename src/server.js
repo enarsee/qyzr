@@ -23,6 +23,7 @@ function buildApp() {
   app.use(require('./routes/api'));
   app.use(require('./routes/upload'));
   app.use(require('./routes/export'));
+  app.use(require('./routes/admin'));
   app.use(require('./routes/pages'));
   return app;
 }

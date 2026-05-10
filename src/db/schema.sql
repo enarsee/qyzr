@@ -79,3 +79,13 @@ CREATE TABLE IF NOT EXISTS answers (
   UNIQUE(game_id, question_id, player_id)
 );
 CREATE INDEX IF NOT EXISTS idx_answers_game_question ON answers(game_id, question_id);
+
+-- Admin-managed app-wide secrets (e.g. GEMINI_API_KEY). Edited only via
+-- /admin/secrets behind ADMIN_PASSWORD. Values are stored as plain text;
+-- access is gated by admin auth + the SQLite file lives only in the
+-- server's data volume.
+CREATE TABLE IF NOT EXISTS secrets (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
