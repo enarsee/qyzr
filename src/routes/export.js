@@ -178,41 +178,42 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
     .sort((a, b) => a.avgMs - b.avgMs)
     .slice(0, 5);
 
-  // ── Lone wolves ────────────────────────────────────────
-  // A "lone wolf" is the single dissenter on a question: exactly 1 voter
-  // chose option X while ≥5 others picked something else. We surface the
-  // question, the dissenting choice, and the brave/foolish guest who cast
-  // it. Limit to the most lopsided cases (top 5 by majority size).
-  const LONE_WOLF_MIN_OTHERS = 5;
+  // ── Lone wolves (& lone wolf-ish pairs) ───────────────────
+  // Surface dissenters: 1 OR 2 voters chose option X while the room
+  // overwhelmingly chose otherwise. Require the majority to be ≥ 5×
+  // the dissent count — keeps it proportionate (1 vs ≥5, 2 vs ≥10).
+  // Sort by majority size (most lopsided first), top 5.
+  const LONE_WOLF_MAX = 2;
+  const LONE_WOLF_RATIO = 5;
   const loneWolves = [];
+  const findVoters = db.prepare(`
+    SELECT p.name, p.group_value
+    FROM answers a JOIN players p ON p.id = a.player_id
+    WHERE a.game_id = ? AND a.question_id = ? AND a.option_id = ? AND p.kicked = 0
+    ORDER BY a.answered_at ASC
+  `);
   for (const q of qs) {
     const counts = distByQ[q.id] || {};
     const total = totalsByQ[q.id] || 0;
-    if (total < LONE_WOLF_MIN_OTHERS + 1) continue;
     for (const o of q.options) {
       const n = counts[o.id] || 0;
-      if (n !== 1) continue;
-      const others = total - 1;
-      if (others < LONE_WOLF_MIN_OTHERS) continue;
-      // Find the lone voter
-      const voter = db.prepare(`
-        SELECT p.name, p.group_value
-        FROM answers a JOIN players p ON p.id = a.player_id
-        WHERE a.game_id = ? AND a.question_id = ? AND a.option_id = ? AND p.kicked = 0
-        LIMIT 1
-      `).get(game.id, q.id, o.id);
-      if (!voter) continue;
+      if (n < 1 || n > LONE_WOLF_MAX) continue;
+      const others = total - n;
+      if (others < n * LONE_WOLF_RATIO) continue;
+      const voters = findVoters.all(game.id, q.id, o.id);
+      if (voters.length === 0) continue;
       loneWolves.push({
         position: q.position,
         qtext: q.text,
         chosen: o.text,
-        voter_name: voter.name,
-        voter_group: voter.group_value,
-        others, total,
+        voters,
+        n,
+        others,
+        total,
       });
     }
   }
-  loneWolves.sort((a, b) => b.others - a.others || a.position - b.position);
+  loneWolves.sort((a, b) => b.others - a.others || a.n - b.n || a.position - b.position);
   const topLoneWolves = loneWolves.slice(0, 5);
 
   const hasStatsSection = topGuessPlayers.length > 0 || noGuessPlayers.length > 0
@@ -586,18 +587,25 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
       ${topLoneWolves.length > 0 ? `
         <div class="stat-card" style="grid-column: 1 / -1;">
           <h3><span class="icon" style="color:var(--rose);">${moonSvg}</span> Lone wolves</h3>
-          <p class="blurb">The brave (or stubborn) souls who voted against the room — alone, against ${LONE_WOLF_MIN_OTHERS}+ others.</p>
+          <p class="blurb">The brave (or stubborn) few who voted against the room — alone or in pairs, outvoted at least ${LONE_WOLF_RATIO} to 1.</p>
           <ul class="lone-list" style="list-style:none;padding-left:0;margin:0;">
-            ${topLoneWolves.map(w => `
+            ${topLoneWolves.map(w => {
+              const namesHtml = w.voters.map(v => {
+                const chip = v.group_value ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(v.group_value)}</span>` : '';
+                return `<strong style="color:var(--ink);font-weight:600;">${escapeHtml(v.name)}</strong>${chip}`;
+              }).join(w.voters.length === 2 ? ' &amp; ' : ', ');
+              const verb = w.n === 1 ? 'stood alone for' : 'were the only two backing';
+              return `
               <li style="padding:10px 0;border-bottom:1px solid rgba(227,217,204,0.6);">
                 <div style="font-family:'Cormorant Infant',serif;font-size:17px;color:var(--ink);">
                   &ldquo;${escapeHtml(w.qtext)}&rdquo;
                 </div>
                 <div style="font-family:'Inter',sans-serif;font-size:14px;color:var(--muted);margin-top:2px;">
-                  <strong style="color:var(--ink);font-weight:600;">${escapeHtml(w.voter_name)}</strong>${w.voter_group ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(w.voter_group)}</span>` : ''} stood alone for <strong style="color:var(--rose);font-weight:600;">${escapeHtml(w.chosen)}</strong> <span class="pill">1 vs ${w.others}</span>
+                  ${namesHtml} ${verb} <strong style="color:var(--rose);font-weight:600;">${escapeHtml(w.chosen)}</strong> <span class="pill">${w.n} vs ${w.others}</span>
                 </div>
               </li>
-            `).join('')}
+            `;
+            }).join('')}
           </ul>
         </div>
       ` : ''}
