@@ -473,9 +473,11 @@
       </div>
 
       <h4 style="margin: 16px 0 8px;">Couple faces <span style="font-family:'Inter';font-size:12px;color:var(--muted);font-weight:400;">— optional</span></h4>
-      <p style="color: var(--muted); font-size: 14px; margin: 0 0 12px;">
+      <p style="color: var(--muted); font-size: 14px; margin: 0 0 8px;">
         Used in the VS panel after trivia questions. Upload one photo per mood per side, or leave them — cartoon defaults are shown otherwise.
       </p>
+      <button class="btn" id="spriteWizardBtn" type="button" style="margin: 0 0 14px;">${WQ_ICONS.sparkles}Generate sprite pack with AI</button>
+      <div id="spriteWizard" style="display:none;"></div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
         ${['bride','groom'].map(side => `
           <div>
@@ -549,6 +551,160 @@
         toast(`${side} · ${state} saved`);
       });
     });
+
+    // Sprite-pack wizard
+    const spriteBtn = document.getElementById('spriteWizardBtn');
+    if (spriteBtn) {
+      spriteBtn.addEventListener('click', () => openSpriteWizard());
+    }
+  }
+
+  // ── Sprite pack wizard ─────────────────────────────────────────
+  // Two-step flow:
+  //   1. Host uploads (or has uploaded) bride + groom photos.
+  //   2. Click Generate → SSE stream populates the 10-cell grid.
+  function openSpriteWizard() {
+    const panel = document.getElementById('spriteWizard');
+    if (!panel) return;
+    panel.style.display = 'block';
+    let bridePath = null, groomPath = null;
+
+    function renderWizard(streaming) {
+      const cells = ['bride', 'groom'].flatMap(side => FACE_STATES.map(state => ({ side, state })));
+      panel.innerHTML = `
+        <div style="background: rgba(200,88,122,0.04); border: 1px dashed rgba(200,88,122,0.3); border-radius: 12px; padding: 16px; margin-top: 8px;">
+          <p style="font-family:'Inter';font-size:13px;color:var(--ink);margin:0 0 12px;font-weight:600;">
+            Step 1 — upload close-up photos of each side. Tightly cropped on the face works best.
+          </p>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px;">
+            <div style="text-align:center;">
+              <div style="font-size:12px;font-family:Inter;color:var(--muted);margin-bottom:4px;">${escapeHtml(quiz.bride_label || 'Bride')}</div>
+              <div id="brideThumb" style="width:96px;height:96px;border-radius:50%;background:var(--bg);display:grid;place-items:center;color:var(--muted);font-family:Inter;font-size:11px;margin: 0 auto 6px;overflow:hidden;">no photo</div>
+              <input type="file" id="brideFile" accept="image/*" style="font-size:12px;">
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:12px;font-family:Inter;color:var(--muted);margin-bottom:4px;">${escapeHtml(quiz.groom_label || 'Groom')}</div>
+              <div id="groomThumb" style="width:96px;height:96px;border-radius:50%;background:var(--bg);display:grid;place-items:center;color:var(--muted);font-family:Inter;font-size:11px;margin: 0 auto 6px;overflow:hidden;">no photo</div>
+              <input type="file" id="groomFile" accept="image/*" style="font-size:12px;">
+            </div>
+          </div>
+          <p style="font-family:'Inter';font-size:13px;color:var(--ink);margin:16px 0 8px;font-weight:600;">
+            Step 2 — generate 10 sprites (5 emotions × 2 sides). Streams in as each finishes; takes 30–90s total.
+          </p>
+          <div style="display:grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 12px;">
+            ${cells.map(c => `
+              <div data-side="${c.side}" data-state="${c.state}" class="sprite-cell" style="text-align:center; opacity:0.4;">
+                <div style="font-family:'Inter';font-size:10px;color:var(--muted);">${c.side[0].toUpperCase() + c.side.slice(1)}<br>${c.state}</div>
+                <div class="cell-img" style="width:64px;height:64px;margin: 4px auto 0;border-radius:50%;background:var(--bg);overflow:hidden;display:grid;place-items:center;color:var(--muted);font-family:Inter;font-size:10px;">…</div>
+              </div>
+            `).join('')}
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button class="btn btn-primary" id="spriteGenBtn" type="button" ${streaming ? 'disabled' : ''}>${streaming ? 'Generating…' : 'Generate'}</button>
+            <button class="btn" id="spriteCancelBtn" type="button">${streaming ? 'Cancel' : 'Close'}</button>
+            <span id="spriteStatus" style="font-family:Inter;font-size:13px;color:var(--muted);"></span>
+          </div>
+        </div>
+      `;
+
+      function bindUpload(inputId, thumbId, onPath) {
+        const inp = document.getElementById(inputId);
+        const thumb = document.getElementById(thumbId);
+        inp.addEventListener('change', async (e) => {
+          const f = e.target.files[0]; if (!f) return;
+          const fd = new FormData(); fd.append('image', f);
+          thumb.textContent = 'uploading…';
+          const up = await fetch('/api/upload', { method: 'POST', body: fd });
+          if (!up.ok) { thumb.textContent = 'failed'; return; }
+          const { path } = await up.json();
+          onPath(path);
+          thumb.innerHTML = `<img src="${path}" style="width:100%;height:100%;object-fit:cover;">`;
+        });
+      }
+      bindUpload('brideFile', 'brideThumb', p => bridePath = p);
+      bindUpload('groomFile', 'groomThumb', p => groomPath = p);
+
+      document.getElementById('spriteCancelBtn').onclick = () => {
+        panel.style.display = 'none';
+        panel.innerHTML = '';
+      };
+      document.getElementById('spriteGenBtn').onclick = () => startStream();
+    }
+
+    async function startStream() {
+      if (!bridePath || !groomPath) {
+        document.getElementById('spriteStatus').textContent = 'Upload both photos first.';
+        return;
+      }
+      renderWizard(true);
+      // Re-restore thumbs after re-render (we wiped innerHTML)
+      const bThumb = document.getElementById('brideThumb');
+      const gThumb = document.getElementById('groomThumb');
+      bThumb.innerHTML = `<img src="${bridePath}" style="width:100%;height:100%;object-fit:cover;">`;
+      gThumb.innerHTML = `<img src="${groomPath}" style="width:100%;height:100%;object-fit:cover;">`;
+      const status = document.getElementById('spriteStatus');
+      status.textContent = 'Generating… (30–90s)';
+
+      // Use fetch() + a streaming reader — EventSource doesn't support POST.
+      let resp;
+      try {
+        resp = await fetch(`/api/quiz/${token}/generate-sprites`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ bride_image_path: bridePath, groom_image_path: groomPath }),
+        });
+      } catch {
+        status.style.color = 'var(--error)'; status.textContent = 'Network error.';
+        return;
+      }
+      if (!resp.ok) {
+        const j = await resp.json().catch(() => ({}));
+        status.style.color = 'var(--error)';
+        status.textContent = j.error === 'api_key_missing' ? 'Set GEMINI_API_KEY at /admin/secrets.' : (j.error || 'Failed to start.');
+        return;
+      }
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let done = 0, errors = 0;
+      while (true) {
+        const { value, done: streamDone } = await reader.read();
+        if (streamDone) break;
+        buf += decoder.decode(value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf('\n\n')) >= 0) {
+          const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2);
+          const line = chunk.split('\n').find(l => l.startsWith('data: '));
+          if (!line) continue;
+          let evt;
+          try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+          if (evt.type === 'sprite') {
+            const cell = panel.querySelector(`.sprite-cell[data-side="${evt.side}"][data-state="${evt.state}"]`);
+            if (cell) {
+              cell.style.opacity = '1';
+              cell.querySelector('.cell-img').innerHTML = `<img src="${evt.image_path}" style="width:100%;height:100%;object-fit:cover;">`;
+            }
+            done++;
+            status.textContent = `${done}/10 sprites generated…`;
+          } else if (evt.type === 'error') {
+            const cell = panel.querySelector(`.sprite-cell[data-side="${evt.side}"][data-state="${evt.state}"]`);
+            if (cell) cell.querySelector('.cell-img').innerHTML = `<span style="color:var(--error);">×</span>`;
+            errors++;
+          } else if (evt.type === 'done') {
+            status.style.color = errors ? 'var(--error)' : 'var(--success)';
+            status.textContent = errors
+              ? `${done} done, ${errors} failed.`
+              : `All ${done} sprites generated.`;
+            const btn = document.getElementById('spriteGenBtn');
+            btn.disabled = false; btn.textContent = 'Generate again';
+            document.getElementById('spriteCancelBtn').textContent = 'Close';
+            // Refresh quiz so the face panel shows the new sprites.
+            await loadQuiz();
+          }
+        }
+      }
+    }
+
+    renderWizard(false);
   }
 
   function facesComplete() {

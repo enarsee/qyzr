@@ -98,4 +98,109 @@ router.post('/api/quiz/:token/q/:qid/generate-image', aiLimiter, express.json({ 
   }
 });
 
+// ── Sprite pack generation ─────────────────────────────────────────
+// Per-emotion mood/scene language used in the generation prompt.
+const EMOTION_PROMPTS = {
+  neutral: 'a calm, neutral expression, looking forward',
+  happy:   'a warm, joyful smile, eyes lit up',
+  sad:     'a soft, downcast, sad expression',
+  angry:   'a slightly frustrated, frowning expression — playful, not menacing',
+  winner:  'an exuberant, triumphant smile — eyes closed in joy, like just won a prize',
+};
+const ALL_STATES = Object.keys(EMOTION_PROMPTS); // 5
+const ALL_SIDES = ['bride', 'groom'];
+
+function buildSpritePrompt({ side, state, bride_label, groom_label }) {
+  const who = side === 'bride'
+    ? `the ${bride_label || 'bride'} from the reference photo`
+    : `the ${groom_label || 'groom'} from the reference photo`;
+  return [
+    `Generate a circular avatar-style portrait of ${who}.`,
+    `Cartoonish illustrated style, clean studio background (single soft pastel color), centered face and shoulders only.`,
+    `Expression: ${EMOTION_PROMPTS[state]}.`,
+    'Maintain their exact facial features, skin tone, and hair from the reference. Wedding-appropriate, friendly, no text or logos.',
+  ].join(' ');
+}
+
+// POST /api/quiz/:token/generate-sprites
+//   body: { bride_image_path, groom_image_path }
+// Streams results via SSE. Each event:
+//   data: {"type":"sprite","side":"bride","state":"happy","image_path":"/uploads/x.webp"}
+//   data: {"type":"error","side":"bride","state":"sad","error":"rate_limited"}
+//   data: {"type":"done"}
+router.post('/api/quiz/:token/generate-sprites', aiLimiter, express.json({ limit: '8kb' }), async (req, res) => {
+  const q = requireQuizByToken(req, res); if (!q) return;
+  const apiKey = getApiKey();
+  if (!apiKey) return res.status(503).json({ error: 'api_key_missing', hint: 'Set GEMINI_API_KEY at /admin/secrets' });
+
+  const SAFE = /^\/uploads\/[A-Za-z0-9_\-]+\.webp$/;
+  const bridePath = req.body && typeof req.body.bride_image_path === 'string' ? req.body.bride_image_path : '';
+  const groomPath = req.body && typeof req.body.groom_image_path === 'string' ? req.body.groom_image_path : '';
+  if (!SAFE.test(bridePath) || !SAFE.test(groomPath)) {
+    return res.status(400).json({ error: 'image_paths_invalid' });
+  }
+
+  let brideRef, groomRef;
+  try {
+    [brideRef, groomRef] = await Promise.all([
+      gemini.imageFromUploadPath(bridePath, config.dataDir),
+      gemini.imageFromUploadPath(groomPath, config.dataDir),
+    ]);
+  } catch (e) {
+    return res.status(400).json({ error: e instanceof gemini.GeminiError ? e.message : 'reference_image_invalid' });
+  }
+
+  // Switch to SSE.
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  // Disable Nginx-style buffering if anything is in front of us.
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+  const send = (obj) => { res.write(`data: ${JSON.stringify(obj)}\n\n`); };
+
+  let clientGone = false;
+  req.on('close', () => { clientGone = true; });
+
+  const tasks = [];
+  for (const side of ALL_SIDES) {
+    for (const state of ALL_STATES) {
+      tasks.push({ side, state });
+    }
+  }
+
+  // Generate in parallel; emit as each finishes.
+  await Promise.all(tasks.map(async ({ side, state }) => {
+    if (clientGone) return;
+    try {
+      const ref = side === 'bride' ? brideRef : groomRef;
+      const result = await gemini.generateImage({
+        prompt: buildSpritePrompt({ side, state, bride_label: q.bride_label, groom_label: q.groom_label }),
+        referenceImages: [ref],
+        apiKey,
+        aspectRatio: '1:1',
+      });
+      // Sprite-style: square crop + circle-friendly framing already baked in by prompt.
+      const out = await sharp(result.buffer)
+        .rotate()
+        .resize({ width: 512, height: 512, fit: 'cover' })
+        .toFormat('webp', { quality: 88 })
+        .toBuffer();
+      const fname = `sprite-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+      fs.writeFileSync(path.join(uploadDir, fname), out);
+      const image_path = `/uploads/${fname}`;
+      faces.upsert({ quiz_id: q.id, side, state, image_path });
+      if (!clientGone) send({ type: 'sprite', side, state, image_path });
+    } catch (e) {
+      const code = e instanceof gemini.GeminiError ? e.message : 'generation_failed';
+      if (!clientGone) send({ type: 'error', side, state, error: code });
+    }
+  }));
+
+  if (!clientGone) {
+    send({ type: 'done' });
+    res.end();
+  }
+});
+
 module.exports = router;
