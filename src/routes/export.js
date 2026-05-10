@@ -419,18 +419,22 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
           <ol>${guessTables.map(t => `<li>${escapeHtml(quiz.group_label || 'Table')} <strong>${escapeHtml(t.group_value)}</strong> · ${t.guesses} ${t.guesses === 1 ? 'vote' : 'votes'} <span class="pill">${t.players} ${t.players === 1 ? 'player' : 'players'}</span></li>`).join('')}</ol>
         </div>
       ` : ''}
-      ${teamBride.length > 0 ? `
-        <div class="stat-card">
-          <h3><img class="stat-mini-face" src="${faceUrl(quizFaces, 'bride', 'happy')}" alt=""> Team ${escapeHtml(quiz.bride_label)}</h3>
-          <p class="blurb">Most loyal ${escapeHtml(quiz.bride_label)} voters when she was an option.</p>
-          <ul style="list-style:none;padding-left:0;">${teamBride.map(p => `<li>· <strong>${escapeHtml(p.name)}</strong> <span class="pill">${p.bridePicks}/${p.brideOpps} · ${Math.round(p.ratio * 100)}%</span>${p.group ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(p.group)}</span>` : ''}</li>`).join('')}</ul>
-        </div>
-      ` : ''}
-      ${teamGroom.length > 0 ? `
-        <div class="stat-card">
-          <h3><img class="stat-mini-face" src="${faceUrl(quizFaces, 'groom', 'happy')}" alt=""> Team ${escapeHtml(quiz.groom_label)}</h3>
-          <p class="blurb">Most loyal ${escapeHtml(quiz.groom_label)} voters when he was an option.</p>
-          <ul style="list-style:none;padding-left:0;">${teamGroom.map(p => `<li>· <strong>${escapeHtml(p.name)}</strong> <span class="pill">${p.groomPicks}/${p.groomOpps} · ${Math.round(p.ratio * 100)}%</span>${p.group ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(p.group)}</span>` : ''}</li>`).join('')}</ul>
+      ${(teamBride.length > 0 || teamGroom.length > 0) ? `
+        <div class="team-row" style="grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          ${teamBride.length > 0 ? `
+            <div class="stat-card">
+              <h3><img class="stat-mini-face" src="${faceUrl(quizFaces, 'bride', 'happy')}" alt=""> Team ${escapeHtml(quiz.bride_label)}</h3>
+              <p class="blurb">Most loyal ${escapeHtml(quiz.bride_label)} voters when she was an option.</p>
+              <ul style="list-style:none;padding-left:0;">${teamBride.map(p => `<li>· <strong>${escapeHtml(p.name)}</strong> <span class="pill">${p.bridePicks}/${p.brideOpps} · ${Math.round(p.ratio * 100)}%</span>${p.group ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(p.group)}</span>` : ''}</li>`).join('')}</ul>
+            </div>
+          ` : '<div></div>'}
+          ${teamGroom.length > 0 ? `
+            <div class="stat-card">
+              <h3><img class="stat-mini-face" src="${faceUrl(quizFaces, 'groom', 'happy')}" alt=""> Team ${escapeHtml(quiz.groom_label)}</h3>
+              <p class="blurb">Most loyal ${escapeHtml(quiz.groom_label)} voters when he was an option.</p>
+              <ul style="list-style:none;padding-left:0;">${teamGroom.map(p => `<li>· <strong>${escapeHtml(p.name)}</strong> <span class="pill">${p.groomPicks}/${p.groomOpps} · ${Math.round(p.ratio * 100)}%</span>${p.group ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(p.group)}</span>` : ''}</li>`).join('')}</ul>
+            </div>
+          ` : '<div></div>'}
         </div>
       ` : ''}
       ${noGuessPlayers.length > 0 ? `
