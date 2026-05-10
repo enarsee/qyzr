@@ -189,6 +189,11 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
   const brideFace = faceUrl(quizFaces, 'bride', brideMood);
   const groomFace = faceUrl(quizFaces, 'groom', groomMood);
   const crownSvg = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 19h20l-2-7-5 3-3-7-3 7-5-3-2 7z"/></svg>';
+  // Lucide icons (inline so PDF embeds cleanly)
+  const zapSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
+  const checkSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+  const starSvg = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.45 7.55h7.9l-6.4 4.65 2.45 7.55L12 17.1l-6.4 4.65 2.45-7.55-6.4-4.65h7.9z"/></svg>';
+  const ornamentSvg = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c.5 3 2 4.5 5 5-3 .5-4.5 2-5 5-.5-3-2-4.5-5-5 3-.5 4.5-2 5-5z"/></svg>';
 
   // Build the page
   return `<!doctype html>
@@ -199,37 +204,65 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
 <title>${escapeHtml(quiz.name)} — Results</title>
 <link rel="stylesheet" href="/shared/styles.css">
 <style>
-  body { font-size: 16px; }
-  .export-shell { max-width: 880px; margin: 0 auto; padding: 32px 24px 80px; }
+  :root { --gap-section: 48px; }
+  body { font-size: 16px; font-variant-numeric: tabular-nums; }
+  .export-shell { max-width: 880px; margin: 0 auto; padding: 0 24px 80px; }
   .export-toolbar { position: sticky; top: 0; background: var(--bg); padding: 12px 0 16px; margin-bottom: 16px; display: flex; gap: 8px; align-items: center; justify-content: flex-end; z-index: 10; border-bottom: 1px solid #E3D9CC; }
   .export-toolbar .meta { margin-right: auto; color: var(--muted); font-family: 'Inter'; font-size: 13px; }
-  .header { text-align: center; padding: 24px 0 16px; border-bottom: 1px solid #E3D9CC; margin-bottom: 24px; }
-  .header h1 { font-family: 'Great Vibes', cursive; font-size: 64px; color: ${quiz.accent_color}; margin: 0 0 4px; line-height: 1; }
-  .header .sub { color: var(--muted); font-family: 'Inter'; font-size: 14px; }
-  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 32px; }
+  .export-toolbar .btn { transition: transform 150ms ease-out, box-shadow 150ms ease-out, background 150ms ease-out; }
+  .export-toolbar .btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+  .export-toolbar .btn:active { transform: translateY(0); }
+
+  /* Hero band */
+  .hero-band { position: relative; margin: 0 -24px var(--gap-section); border-radius: 0 0 var(--radius-lg) var(--radius-lg); overflow: hidden; min-height: 280px; display: grid; place-items: center; padding: 36px 24px; isolation: isolate; }
+  .hero-band.has-photo { background: var(--surface); }
+  .hero-band .bg { position: absolute; inset: 0; z-index: -1; }
+  .hero-band .bg img { width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
+  .hero-band .bg::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.55) 60%, rgba(251,247,242,0.92) 100%); }
+  .hero-band.no-photo { background: linear-gradient(180deg, rgba(200,88,122,0.06), rgba(184,137,58,0.04)); border-bottom: 1px solid #E3D9CC; }
+  .hero-band h1 { font-family: 'Great Vibes', cursive; font-size: clamp(72px, 9vw, 120px); color: ${quiz.accent_color}; margin: 0 0 4px; line-height: 1; text-align: center; text-shadow: 0 2px 12px rgba(255,255,255,0.6); }
+  .hero-band .sub { color: var(--ink); font-family: 'Inter'; font-size: 15px; opacity: 0.78; text-align: center; }
+
+  /* Reusable script section title */
+  .section-title { display: flex; align-items: center; justify-content: center; gap: 16px; margin: var(--gap-section) 0 24px; font-family: 'Inter', system-ui, sans-serif; font-weight: 600; font-size: 13px; color: var(--rose); text-transform: uppercase; letter-spacing: 0.18em; }
+  .section-title::before, .section-title::after { content: ''; flex: 1; max-width: 80px; height: 1px; background: linear-gradient(to right, transparent, #C8A8B7, transparent); }
+
+  /* Ornament between major sections (decorative, not section title) */
+  .ornament { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 36px 0; color: var(--rose); }
+  .ornament::before, .ornament::after { content: ''; flex: 1; max-width: 120px; height: 1px; background: linear-gradient(to right, transparent, #E0C4D0 50%, transparent); }
+  .ornament svg { width: 14px; height: 14px; opacity: 0.7; }
+
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: var(--gap-section); }
   .stat { background: var(--surface); padding: 16px; border-radius: 12px; box-shadow: var(--shadow-sm); text-align: center; }
-  .stat .num { font-family: 'Inter'; font-weight: 700; font-size: 32px; color: var(--ink); display: block; }
+  .stat .num { font-family: 'Inter'; font-weight: 700; font-size: 32px; color: var(--ink); display: block; font-variant-numeric: tabular-nums; }
   .stat .lbl { font-family: 'Inter'; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 4px; }
-  .q-card { background: var(--surface); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); padding: 20px 24px; margin-bottom: 20px; page-break-inside: avoid; }
+
+  .q-card { background: var(--surface); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); padding: 22px 26px; margin-bottom: 24px; page-break-inside: avoid; }
   .q-num { font-family: 'Inter'; font-weight: 600; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
-  .q-text { font-size: 22px; font-weight: 600; margin: 4px 0 16px; }
+  .q-text { font-size: 22px; font-weight: 600; margin: 4px 0 8px; line-height: 1.3; }
+  .q-result { font-family: 'Inter'; font-size: 14px; color: var(--muted); margin: 0 0 14px; }
+  .q-result strong { color: var(--ink); font-weight: 600; }
+  .q-result .res-icon { display: inline-block; width: 14px; height: 14px; vertical-align: -2px; margin-right: 4px; color: var(--gold); }
   .q-img { display: block; max-width: 480px; max-height: 380px; width: auto; height: auto; border-radius: 10px; object-fit: contain; margin: 0 auto 14px; background: var(--bg); }
   .q-tag { display: inline-block; background: var(--bg); border-radius: 999px; padding: 2px 10px; font-family: 'Inter'; font-size: 11px; color: var(--muted); margin-left: 8px; vertical-align: middle; }
   .q-tag.trivia { background: #FFF8E1; color: var(--gold); }
-  .opt-row { display: grid; grid-template-columns: auto 1fr auto auto auto; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px dashed #E3D9CC; }
+
+  .opt-row { display: grid; grid-template-columns: auto 1fr auto auto auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(227,217,204,0.6); }
   .opt-row:last-child { border-bottom: none; }
+  .q-card.has-faces .opt-row { grid-template-columns: auto 1fr auto auto auto; }
+  .q-card:not(.has-faces) .opt-row { grid-template-columns: auto 1fr auto auto; }
   .opt-letter { font-family: 'Inter'; font-weight: 700; color: var(--muted); font-size: 14px; min-width: 16px; }
   .opt-text { font-family: 'Cormorant Infant', serif; }
   .opt-row.correct .opt-text { font-weight: 700; }
   .opt-row.correct::before { content: '✓'; color: var(--gold); position: absolute; }
   .opt-row.popular .opt-text { font-weight: 600; }
   .opt-bar { width: 140px; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
-  .opt-bar > div { height: 100%; background: var(--rose); }
-  .opt-row.correct .opt-bar > div { background: var(--gold); }
-  .opt-count { font-family: 'Inter'; font-weight: 600; font-size: 14px; color: var(--ink); min-width: 80px; text-align: right; }
+  .opt-bar > div { height: 100%; background: var(--rose); opacity: 0.7; }
+  .opt-row.popular .opt-bar > div { opacity: 0.9; }
+  .opt-row.correct .opt-bar > div { background: var(--gold); opacity: 0.85; }
+  .opt-count { font-family: 'Inter'; font-weight: 600; font-size: 14px; color: var(--ink); min-width: 80px; text-align: right; font-variant-numeric: tabular-nums; }
   .opt-face-mini { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; object-position: 50% 25%; background: var(--surface); border: 2px solid transparent; }
   .opt-face-mini.win { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(184,137,58,0.18); }
-  .opt-face-spacer { width: 56px; height: 56px; }
   @media print { .opt-face-mini.win { border-color: #444; } }
   .lb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 24px; page-break-inside: avoid; }
   @media (max-width: 700px) { .lb-grid { grid-template-columns: 1fr; } }
@@ -238,15 +271,16 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
   .lb ol { margin: 0; padding-left: 20px; font-family: 'Cormorant Infant', serif; font-size: 18px; }
   .lb li { padding: 3px 0; }
 
-  .stats-h { font-family: 'Great Vibes', cursive; font-size: 56px; color: ${quiz.accent_color}; text-align: center; margin: 56px 0 8px; line-height: 1; }
-  .stats-h + .stats-sub { text-align: center; color: var(--muted); font-family: 'Inter'; font-size: 13px; margin: 0 0 24px; text-transform: uppercase; letter-spacing: 0.12em; }
   .stat-card { background: var(--surface); padding: 18px 22px; border-radius: var(--radius-md); box-shadow: var(--shadow-sm); page-break-inside: avoid; }
   .stat-card h3 { font-family: 'Inter'; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+  .stat-card h3 .icon { display: inline-flex; align-items: center; }
+  .stat-card h3 .icon svg { width: 16px; height: 16px; }
   .stat-card .blurb { font-family: 'Cormorant Infant', serif; font-size: 14px; color: var(--muted); margin: 0 0 10px; font-style: italic; }
   .stat-card ol, .stat-card ul { margin: 0; padding-left: 20px; font-family: 'Cormorant Infant', serif; font-size: 17px; }
   .stat-card li { padding: 2px 0; }
-  .stat-card .pill { display: inline-block; background: var(--bg); border-radius: 999px; padding: 1px 8px; font-family: 'Inter'; font-size: 11px; color: var(--muted); margin-left: 6px; vertical-align: middle; }
-  .stat-mini-face { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; object-position: 50% 25%; background: var(--surface); vertical-align: middle; }
+  .stat-card .pill { display: inline-block; background: var(--bg); border-radius: 999px; padding: 1px 8px; font-family: 'Inter'; font-size: 11px; color: var(--muted); margin-left: 6px; vertical-align: middle; font-variant-numeric: tabular-nums; }
+  .stat-card .pill.gold { background: var(--gold); color: #fff; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 10px; }
+  .stat-mini-face { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; object-position: 50% 25%; background: var(--surface); vertical-align: middle; }
   .vs { display: grid; grid-template-columns: 1fr auto 1fr; gap: 24px; align-items: center; padding: 24px 20px; background: var(--surface); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); margin-top: 24px; page-break-inside: avoid; }
   .vs-side { text-align: center; font-family: 'Inter'; }
   .vs-face-wrap { position: relative; display: inline-block; }
@@ -267,15 +301,27 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
 
   /* Print: clean black-on-white, hide toolbar */
   @media print {
-    body { background: #fff; font-size: 12pt; }
+    body { background: #fff; font-size: 11.5pt; }
+    .export-shell { padding-top: 0; padding-bottom: 0; }
     .export-toolbar { display: none; }
-    .stat, .q-card, .lb, .vs { box-shadow: none; border: 1px solid #ccc; }
-    .header h1 { color: #000 !important; }
+    .stat, .q-card, .lb, .vs, .stat-card { box-shadow: none; border: 1px solid #ccc; }
+    /* Keep accent color on title — rose passes AA against ivory */
+    .hero-band .bg::after { background: linear-gradient(180deg, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0.70) 70%, rgba(255,255,255,0.95) 100%); }
+    .hero-band { min-height: 200px; padding: 24px 16px; border-radius: 0; margin: 0 0 32px; border-bottom: 1px solid #999; }
     .opt-bar { border: 1px solid #999; }
-    .opt-row.correct .opt-bar > div { background: #888; }
-    .opt-bar > div { background: #444; }
-    .footer { display: none; }
-    @page { margin: 16mm 14mm; }
+    .opt-row.correct .opt-bar > div { background: #888; opacity: 1; }
+    .opt-bar > div { background: #444; opacity: 1; }
+    /* New section: page-break */
+    .stats-section { page-break-before: always; }
+    /* Footer: only on last page via @page (no full hide) */
+    .footer { display: block; text-align: center; color: #888; font-size: 9pt; }
+    @page {
+      size: A4; margin: 16mm 14mm;
+      @bottom-right { content: counter(page) " / " counter(pages); font-family: 'Inter', sans-serif; font-size: 9pt; color: #888; }
+      @bottom-left { content: "qyzr"; font-family: 'Inter', sans-serif; font-size: 9pt; color: #888; }
+    }
+    /* Visual polish in B&W */
+    .ornament::before, .ornament::after, .section-title::before, .section-title::after { background: linear-gradient(to right, transparent, #999, transparent); }
   }
 </style>
 </head>
@@ -287,10 +333,13 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
     <a class="btn" href="/host/${quiz.creator_token}">Back to host</a>
   </div>
 
-  <div class="header">
-    <h1>${escapeHtml(quiz.name)}</h1>
-    <div class="sub">
-      Game played ${game.started_at ? fmtDate(game.started_at) : ''}${game.finished_at ? ' — ' + fmtDate(game.finished_at) : ''}
+  <div class="hero-band ${quiz.hero_image_path ? 'has-photo' : 'no-photo'}">
+    ${quiz.hero_image_path ? `<div class="bg"><img src="${quiz.hero_image_path}" alt=""></div>` : ''}
+    <div>
+      <h1>${escapeHtml(quiz.name)}</h1>
+      <div class="sub">
+        ${game.started_at ? fmtDate(game.started_at) : ''}${game.finished_at ? ' — ' + fmtDate(game.finished_at) : ''}
+      </div>
     </div>
   </div>
 
@@ -303,6 +352,8 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
     ` : ''}
   </div>
 
+  ${qs.length > 0 ? `<div class="ornament">${ornamentSvg}</div>` : ''}
+
   ${qs.map((q, i) => {
     const dist = distByQ[q.id] || {};
     const total = totalsByQ[q.id] || 0;
@@ -312,12 +363,28 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
       const v = dist[o.id] || 0;
       if (v > popularN) { popularN = v; popularId = o.id; }
     }
+    const popularOpt = q.options.find(o => o.id === popularId);
+    // Does this question have any bride/groom-named options? (drives face column visibility)
+    const hasFaces = q.options.some(o => optionSide(o.text, quiz) !== null);
+    // Result line content
+    let resultLine = '';
+    if (total === 0) {
+      resultLine = `<p class="q-result"><em style="color:var(--muted);">No votes recorded.</em></p>`;
+    } else if (q.is_trivia && correctOpt) {
+      const correctVotes = dist[correctOpt.id] || 0;
+      const correctPct = Math.round((correctVotes / total) * 100);
+      resultLine = `<p class="q-result"><span class="res-icon">${checkSvg}</span>Correct: <strong>${escapeHtml(correctOpt.text)}</strong> — ${correctVotes} of ${total} got it right (${correctPct}%).</p>`;
+    } else if (popularOpt && popularN > 0) {
+      const popPct = Math.round((popularN / total) * 100);
+      resultLine = `<p class="q-result"><span class="res-icon">${starSvg}</span>Most popular: <strong>${escapeHtml(popularOpt.text)}</strong> — ${popularN} of ${total} (${popPct}%).</p>`;
+    }
     return `
-    <div class="q-card">
+    <div class="q-card${hasFaces ? ' has-faces' : ''}">
       <div class="q-num">Question ${i + 1} of ${qs.length}
         <span class="q-tag${q.is_trivia ? ' trivia' : ''}">${q.is_trivia ? `trivia · ${q.side_tag}` : 'poll'}</span>
       </div>
       <div class="q-text">${escapeHtml(q.text)}</div>
+      ${resultLine}
       ${q.image_path ? `<img class="q-img" src="${q.image_path}" alt="">` : ''}
       <div class="opts">
         ${q.options.map((o, oi) => {
@@ -326,15 +393,19 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
           const isCorrect = q.is_trivia && correctOpt && o.id === correctOpt.id;
           const isPopular = !q.is_trivia && popularId === o.id && popularN > 0;
           const cls = isCorrect ? 'correct' : isPopular ? 'popular' : '';
-          // Face sprite when option text matches bride/groom — winner mood for
-          // the leading vote-getter in this question, sad mood for the others.
           const side = optionSide(o.text, quiz);
-          let faceCell = '<span class="opt-face-spacer"></span>';
-          if (side && total > 0) {
-            const isLeader = popularId === o.id && popularN > 0;
-            const mood = isLeader ? 'winner' : 'sad';
-            const winCls = isLeader ? ' win' : '';
-            faceCell = `<img class="opt-face-mini${winCls}" src="${faceUrl(quizFaces, side, mood)}" alt="">`;
+          // Only emit a face cell when this question actually has bride/groom rows.
+          let faceCell = '';
+          if (hasFaces) {
+            if (side && total > 0) {
+              const isLeader = popularId === o.id && popularN > 0;
+              const mood = isLeader ? 'winner' : 'sad';
+              const winCls = isLeader ? ' win' : '';
+              faceCell = `<img class="opt-face-mini${winCls}" src="${faceUrl(quizFaces, side, mood)}" alt="">`;
+            } else {
+              // Empty cell so the face column stays aligned within this card
+              faceCell = '<span></span>';
+            }
           }
           return `
             <div class="opt-row ${cls}" style="position:relative;">
@@ -346,11 +417,6 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
             </div>`;
         }).join('')}
       </div>
-      ${q.is_trivia && correctOpt ? `
-        <p style="font-family:'Inter';font-size:13px;color:var(--muted);margin:12px 0 0;">
-          ${dist[correctOpt.id] || 0} of ${total} got it right (${total > 0 ? Math.round(((dist[correctOpt.id] || 0) / total) * 100) : 0}%).
-        </p>
-      ` : ''}
     </div>`;
   }).join('')}
 
@@ -391,8 +457,8 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
   ` : ''}
 
   ${hasStatsSection ? `
-    <h2 class="stats-h">Statistics</h2>
-    <p class="stats-sub">A look behind the votes</p>
+    <div class="stats-section">
+    <div class="section-title">Statistics · A look behind the votes</div>
     <div class="lb-grid">
       ${topGuessPlayers.length > 0 ? `
         <div class="stat-card">
@@ -403,12 +469,16 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
       ` : ''}
       ${fastestPlayers.length > 0 ? `
         <div class="stat-card">
-          <h3>⚡ Trigger fingers</h3>
+          <h3><span class="icon" style="color:var(--gold);">${zapSvg}</span> Trigger fingers</h3>
           <p class="blurb">Fastest answerers — average lag behind the first responder per question (min 3 answers).</p>
-          <ol>${fastestPlayers.map(p => {
+          <ol>${fastestPlayers.map((p, i) => {
             const ms = p.avgMs;
-            const lbl = ms < 1000 ? `+${Math.round(ms)} ms` : `+${(ms / 1000).toFixed(2)} s`;
-            return `<li><strong>${escapeHtml(p.name)}</strong> · <span class="pill">${lbl} avg</span> <span class="pill">${p.count} ans</span>${p.group ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(p.group)}</span>` : ''}</li>`;
+            // Rank 1 IS the first-responder reference (delta=0); show a FASTEST badge
+            // instead of the meaningless '+0 ms avg'.
+            const lblHtml = (i === 0 && ms < 50)
+              ? `<span class="pill gold">Fastest</span>`
+              : `<span class="pill">${ms < 1000 ? `+${Math.round(ms)} ms` : `+${(ms / 1000).toFixed(2)} s`} avg</span>`;
+            return `<li><strong>${escapeHtml(p.name)}</strong> · ${lblHtml} <span class="pill">${p.count} ans</span>${p.group ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(p.group)}</span>` : ''}</li>`;
           }).join('')}</ol>
         </div>
       ` : ''}
