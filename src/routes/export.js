@@ -117,26 +117,40 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
       if (t === groomKey) qHasGroom[q.id] = true;
     }
   }
-  // Aggregate per player
+  // Aggregate per player. For "loyalty" we count, in questions that offered
+  // bride/groom as an option, how often the player picked that side.
   const perPlayer = {};
   for (const r of allChoices) {
     const k = r.player_id;
-    const p = perPlayer[k] ||= { name: r.name, group: r.group_value, brideAnswers: [], groomAnswers: [] };
-    if (qHasBride[r.question_id]) p.brideAnswers.push(r.chosen);
-    if (qHasGroom[r.question_id]) p.groomAnswers.push(r.chosen);
-  }
-  const alwaysBride = [];
-  const alwaysGroom = [];
-  for (const p of Object.values(perPlayer)) {
-    if (p.brideAnswers.length >= 2 && p.brideAnswers.every(c => c === brideKey)) {
-      alwaysBride.push(p);
+    const p = perPlayer[k] ||= {
+      name: r.name, group: r.group_value,
+      brideOpps: 0, bridePicks: 0, groomOpps: 0, groomPicks: 0
+    };
+    if (qHasBride[r.question_id]) {
+      p.brideOpps++;
+      if (r.chosen === brideKey) p.bridePicks++;
     }
-    if (p.groomAnswers.length >= 2 && p.groomAnswers.every(c => c === groomKey)) {
-      alwaysGroom.push(p);
+    if (qHasGroom[r.question_id]) {
+      p.groomOpps++;
+      if (r.chosen === groomKey) p.groomPicks++;
     }
   }
+  // Loyalists: ≥60% picks of that side, min 2 opportunities. Ranked by ratio
+  // (then by raw pick count, then alphabetical), top 8.
+  const LOYALTY_THRESHOLD = 0.60;
+  const MIN_OPPS = 2;
+  const teamBride = Object.values(perPlayer)
+    .map(p => ({ ...p, ratio: p.brideOpps > 0 ? p.bridePicks / p.brideOpps : 0 }))
+    .filter(p => p.brideOpps >= MIN_OPPS && p.ratio >= LOYALTY_THRESHOLD)
+    .sort((a, b) => b.ratio - a.ratio || b.bridePicks - a.bridePicks || a.name.localeCompare(b.name))
+    .slice(0, 8);
+  const teamGroom = Object.values(perPlayer)
+    .map(p => ({ ...p, ratio: p.groomOpps > 0 ? p.groomPicks / p.groomOpps : 0 }))
+    .filter(p => p.groomOpps >= MIN_OPPS && p.ratio >= LOYALTY_THRESHOLD)
+    .sort((a, b) => b.ratio - a.ratio || b.groomPicks - a.groomPicks || a.name.localeCompare(b.name))
+    .slice(0, 8);
   const hasStatsSection = topGuessPlayers.length > 0 || noGuessPlayers.length > 0
-    || alwaysBride.length > 0 || alwaysGroom.length > 0 || guessTables.length > 0;
+    || teamBride.length > 0 || teamGroom.length > 0 || guessTables.length > 0;
 
   // Faces for the VS panel — winner gets 'winner' state, loser 'sad', tie both 'neutral'.
   const quizFaces = faces.byQuiz(quiz.id);
@@ -183,9 +197,9 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
   .opt-bar > div { height: 100%; background: var(--rose); }
   .opt-row.correct .opt-bar > div { background: var(--gold); }
   .opt-count { font-family: 'Inter'; font-weight: 600; font-size: 14px; color: var(--ink); min-width: 80px; text-align: right; }
-  .opt-face-mini { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; object-position: 50% 25%; background: var(--surface); border: 2px solid transparent; }
-  .opt-face-mini.win { border-color: var(--gold); }
-  .opt-face-spacer { width: 36px; height: 36px; }
+  .opt-face-mini { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; object-position: 50% 25%; background: var(--surface); border: 2px solid transparent; }
+  .opt-face-mini.win { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(184,137,58,0.18); }
+  .opt-face-spacer { width: 56px; height: 56px; }
   @media print { .opt-face-mini.win { border-color: #444; } }
   .lb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 24px; page-break-inside: avoid; }
   @media (max-width: 700px) { .lb-grid { grid-template-columns: 1fr; } }
@@ -364,18 +378,18 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
           <ol>${guessTables.map(t => `<li>${escapeHtml(quiz.group_label || 'Table')} <strong>${escapeHtml(t.group_value)}</strong> · ${t.guesses} ${t.guesses === 1 ? 'vote' : 'votes'} <span class="pill">${t.players} ${t.players === 1 ? 'player' : 'players'}</span></li>`).join('')}</ol>
         </div>
       ` : ''}
-      ${alwaysBride.length > 0 ? `
+      ${teamBride.length > 0 ? `
         <div class="stat-card">
           <h3><img class="stat-mini-face" src="${faceUrl(quizFaces, 'bride', 'happy')}" alt=""> Team ${escapeHtml(quiz.bride_label)}</h3>
-          <p class="blurb">Picked ${escapeHtml(quiz.bride_label)} every time she was an option.</p>
-          <ul style="list-style:none;padding-left:0;">${alwaysBride.slice(0, 12).map(p => `<li>· <strong>${escapeHtml(p.name)}</strong>${p.group ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(p.group)}</span>` : ''}</li>`).join('')}</ul>
+          <p class="blurb">Most loyal ${escapeHtml(quiz.bride_label)} voters when she was an option.</p>
+          <ul style="list-style:none;padding-left:0;">${teamBride.map(p => `<li>· <strong>${escapeHtml(p.name)}</strong> <span class="pill">${p.bridePicks}/${p.brideOpps} · ${Math.round(p.ratio * 100)}%</span>${p.group ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(p.group)}</span>` : ''}</li>`).join('')}</ul>
         </div>
       ` : ''}
-      ${alwaysGroom.length > 0 ? `
+      ${teamGroom.length > 0 ? `
         <div class="stat-card">
           <h3><img class="stat-mini-face" src="${faceUrl(quizFaces, 'groom', 'happy')}" alt=""> Team ${escapeHtml(quiz.groom_label)}</h3>
-          <p class="blurb">Picked ${escapeHtml(quiz.groom_label)} every time he was an option.</p>
-          <ul style="list-style:none;padding-left:0;">${alwaysGroom.slice(0, 12).map(p => `<li>· <strong>${escapeHtml(p.name)}</strong>${p.group ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(p.group)}</span>` : ''}</li>`).join('')}</ul>
+          <p class="blurb">Most loyal ${escapeHtml(quiz.groom_label)} voters when he was an option.</p>
+          <ul style="list-style:none;padding-left:0;">${teamGroom.map(p => `<li>· <strong>${escapeHtml(p.name)}</strong> <span class="pill">${p.groomPicks}/${p.groomOpps} · ${Math.round(p.ratio * 100)}%</span>${p.group ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(p.group)}</span>` : ''}</li>`).join('')}</ul>
         </div>
       ` : ''}
       ${noGuessPlayers.length > 0 ? `
