@@ -178,9 +178,56 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
     .sort((a, b) => a.avgMs - b.avgMs)
     .slice(0, 5);
 
+  // ── Lone wolves ────────────────────────────────────────
+  // A "lone wolf" is the single dissenter on a question: exactly 1 voter
+  // chose option X while ≥5 others picked something else. We surface the
+  // question, the dissenting choice, and the brave/foolish guest who cast
+  // it. Limit to the most lopsided cases (top 5 by majority size).
+  const LONE_WOLF_MIN_OTHERS = 5;
+  const distRows = db.prepare(`
+    SELECT a.question_id, a.option_id, COUNT(*) AS n
+    FROM answers a
+    WHERE a.game_id = ?
+    GROUP BY a.question_id, a.option_id
+  `).all(game.id);
+  const distByQOpt = {};
+  for (const r of distRows) {
+    (distByQOpt[r.question_id] ||= {})[r.option_id] = r.n;
+  }
+  const loneWolves = [];
+  for (const q of qs) {
+    const counts = distByQOpt[q.id] || {};
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    if (total < LONE_WOLF_MIN_OTHERS + 1) continue;
+    for (const o of q.options) {
+      const n = counts[o.id] || 0;
+      if (n !== 1) continue;
+      const others = total - 1;
+      if (others < LONE_WOLF_MIN_OTHERS) continue;
+      // Find the lone voter
+      const voter = db.prepare(`
+        SELECT p.name, p.group_value
+        FROM answers a JOIN players p ON p.id = a.player_id
+        WHERE a.game_id = ? AND a.question_id = ? AND a.option_id = ? AND p.kicked = 0
+        LIMIT 1
+      `).get(game.id, q.id, o.id);
+      if (!voter) continue;
+      loneWolves.push({
+        position: q.position,
+        qtext: q.text,
+        chosen: o.text,
+        voter_name: voter.name,
+        voter_group: voter.group_value,
+        others, total,
+      });
+    }
+  }
+  loneWolves.sort((a, b) => b.others - a.others || a.position - b.position);
+  const topLoneWolves = loneWolves.slice(0, 5);
+
   const hasStatsSection = topGuessPlayers.length > 0 || noGuessPlayers.length > 0
     || teamBride.length > 0 || teamGroom.length > 0 || guessTables.length > 0
-    || fastestPlayers.length > 0;
+    || fastestPlayers.length > 0 || topLoneWolves.length > 0;
 
   // Faces for the VS panel — winner gets 'winner' state, loser 'sad', tie both 'neutral'.
   const quizFaces = faces.byQuiz(quiz.id);
@@ -194,6 +241,8 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
   const checkSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
   const starSvg = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.45 7.55h7.9l-6.4 4.65 2.45 7.55L12 17.1l-6.4 4.65 2.45-7.55-6.4-4.65h7.9z"/></svg>';
   const ornamentSvg = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c.5 3 2 4.5 5 5-3 .5-4.5 2-5 5-.5-3-2-4.5-5-5 3-.5 4.5-2 5-5z"/></svg>';
+  // Lucide "moon" — quiet, after-hours, lone-wolf vibe
+  const moonSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
 
   // Build the page
   return `<!doctype html>
@@ -306,6 +355,8 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
   .stat-card li { padding: 2px 0; }
   .stat-card .pill { display: inline-block; background: var(--bg); border-radius: 999px; padding: 1px 8px; font-family: 'Inter'; font-size: 11px; color: var(--muted); margin-left: 6px; vertical-align: middle; font-variant-numeric: tabular-nums; }
   .stat-card .pill.gold { background: var(--gold); color: #fff; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 10px; }
+  .stat-card .lone-list li:last-child { border-bottom: none !important; padding-bottom: 0 !important; }
+  .stat-card .lone-list li:first-child { padding-top: 0 !important; }
   .stat-mini-face { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; object-position: 50% 25%; background: var(--surface); vertical-align: middle; }
   .vs { display: grid; grid-template-columns: 1fr auto 1fr; gap: 24px; align-items: center; padding: 24px 20px; background: var(--surface); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); margin-top: 24px; page-break-inside: avoid; }
   .vs-side { text-align: center; font-family: 'Inter'; }
@@ -540,6 +591,24 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
           <h3>The shy ones</h3>
           <p class="blurb">Joined but never voted (${noGuessPlayers.length} ${noGuessPlayers.length === 1 ? 'guest' : 'guests'}).</p>
           <p style="font-family:'Cormorant Infant',serif;font-size:17px;margin:0;">${noGuessPlayers.map(p => `<span style="display:inline-block;margin-right:14px;">${escapeHtml(p.name)}${p.group_value ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(p.group_value)}</span>` : ''}</span>`).join('')}</p>
+        </div>
+      ` : ''}
+      ${topLoneWolves.length > 0 ? `
+        <div class="stat-card" style="grid-column: 1 / -1;">
+          <h3><span class="icon" style="color:var(--rose);">${moonSvg}</span> Lone wolves</h3>
+          <p class="blurb">The brave (or stubborn) souls who voted against the room — alone, against ${LONE_WOLF_MIN_OTHERS}+ others.</p>
+          <ul class="lone-list" style="list-style:none;padding-left:0;margin:0;">
+            ${topLoneWolves.map(w => `
+              <li style="padding:10px 0;border-bottom:1px solid rgba(227,217,204,0.6);">
+                <div style="font-family:'Cormorant Infant',serif;font-size:17px;color:var(--ink);">
+                  &ldquo;${escapeHtml(w.qtext)}&rdquo;
+                </div>
+                <div style="font-family:'Inter',sans-serif;font-size:14px;color:var(--muted);margin-top:2px;">
+                  <strong style="color:var(--ink);font-weight:600;">${escapeHtml(w.voter_name)}</strong>${w.voter_group ? ` <span class="pill">${escapeHtml(quiz.group_label || 'Table')} ${escapeHtml(w.voter_group)}</span>` : ''} stood alone for <strong style="color:var(--rose);font-weight:600;">${escapeHtml(w.chosen)}</strong> <span class="pill">1 vs ${w.others}</span>
+                </div>
+              </li>
+            `).join('')}
+          </ul>
         </div>
       ` : ''}
     </div>
