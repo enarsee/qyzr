@@ -15,7 +15,7 @@ function register(io, socket) {
     ctx.player_id = p.id;
     socket.join(`players:${ctx.game_id}`);
     socket.emit('joined', { player_id: p.id, player_token: p.player_token });
-    socket.emit('state', buildStatePayload({ game_id: ctx.game_id, includeCorrect: false }));
+    socket.emit('state', buildStatePayload({ game_id: ctx.game_id, includeCorrect: false, player_id: p.id }));
     io.to(`host:${ctx.game_id}`).emit('player:joined', { player_id: p.id, name: p.name, group_value: p.group_value });
     io.to(`display:${ctx.game_id}`).emit('player:joined', { player_id: p.id, name: p.name, group_value: p.group_value });
   }
@@ -31,7 +31,7 @@ function register(io, socket) {
       ctx.player_id = id;
       socket.join(`players:${ctx.game_id}`);
       socket.emit('joined', { player_id: id, player_token });
-      socket.emit('state', buildStatePayload({ game_id: ctx.game_id, includeCorrect: false }));
+      socket.emit('state', buildStatePayload({ game_id: ctx.game_id, includeCorrect: false, player_id: id }));
       io.to(`host:${ctx.game_id}`).emit('player:joined', { player_id: id, name: cleanName, group_value: cleanGv });
       io.to(`display:${ctx.game_id}`).emit('player:joined', { player_id: id, name: cleanName, group_value: cleanGv });
     } catch (e) {

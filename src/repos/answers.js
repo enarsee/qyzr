@@ -63,4 +63,9 @@ function playerScore(game_id, player_id) {
     .get(game_id, player_id).score;
 }
 
-module.exports = { record, countForQuestion, distribution, leaderboard, tableLeaderboard, sideScores, playerScore };
+function byPlayerQuestion(game_id, player_id, question_id) {
+  return getDb().prepare(`SELECT option_id FROM answers WHERE game_id = ? AND player_id = ? AND question_id = ?`)
+    .get(game_id, player_id, question_id) || null;
+}
+
+module.exports = { record, countForQuestion, distribution, leaderboard, tableLeaderboard, sideScores, playerScore, byPlayerQuestion };

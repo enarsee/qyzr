@@ -98,6 +98,34 @@ test('answer dedupe: second answer silently dropped', async () => {
   player.close(); host.close();
 });
 
+test('rejoin during active question carries my_answer_option_id in state', async () => {
+  const { host, room_code, game_id } = await bootstrap();
+  const a = await connect(s.url, { role: 'player', room_code });
+  const j = await new Promise(r => { a.once('joined', r); a.emit('player:join', { name: 'Alice', group_value: '1' }); });
+  // Host advances to first question; player answers.
+  const showP = new Promise(r => a.once('question:show', r));
+  host.emit('host:next', { game_id });
+  const shown = await showP;
+  const optId = shown.options[0].id;
+  a.emit('player:answer', { game_id, question_id: shown.question_id, option_id: optId });
+  await new Promise(r => setTimeout(r, 80));
+  a.close();
+
+  // Reconnect with the same player_token while the question is still active.
+  const { io: sioClient } = require('socket.io-client');
+  const { state, sock } = await new Promise((resolve, reject) => {
+    const s2 = sioClient(s.url, {
+      auth: { role: 'player', room_code, player_token: j.player_token },
+      transports: ['websocket'], forceNew: true, reconnection: false
+    });
+    s2.once('state', st => resolve({ state: st, sock: s2 }));
+    s2.once('connect_error', reject);
+  });
+  expect(state.status).toBe('active');
+  expect(state.my_answer_option_id).toBe(optId);
+  sock.close(); host.close();
+});
+
 test('player socket emitting host:start is silently ignored (forbidden)', async () => {
   const { host, room_code, game_id } = await bootstrap();
   const player = await connect(s.url, { role: 'player', room_code });

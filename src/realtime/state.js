@@ -2,6 +2,7 @@ const games = require('../repos/games');
 const players = require('../repos/players');
 const quizzes = require('../repos/quizzes');
 const questions = require('../repos/questions');
+const answers = require('../repos/answers');
 
 const totalsByQuestion = new Map(); // game_id:question_id -> total
 
@@ -12,7 +13,7 @@ function getTotal(game_id, question_id) {
   return totalsByQuestion.get(`${game_id}:${question_id}`) ?? players.listByGame(game_id).length;
 }
 
-function buildStatePayload({ game_id, includeCorrect }) {
+function buildStatePayload({ game_id, includeCorrect, player_id }) {
   const game = games.byId(game_id);
   if (!game) return null;
   const quiz = quizzes.byId(game.quiz_id);
@@ -23,6 +24,14 @@ function buildStatePayload({ game_id, includeCorrect }) {
     if (q) current = projectQuestion(q, includeCorrect);
   }
   const playerList = players.listByGame(game_id).map(p => ({ id: p.id, name: p.name, group_value: p.group_value }));
+  // For players reconnecting mid-question: include the option_id they
+  // already chose (if any) so the client can render the locked-in UI
+  // instead of showing fresh options that the server will reject.
+  let myAnswerOptionId = null;
+  if (player_id && game.current_question_id) {
+    const a = answers.byPlayerQuestion(game_id, player_id, game.current_question_id);
+    if (a) myAnswerOptionId = a.option_id;
+  }
   return {
     game_id,
     status: game.status,
@@ -33,7 +42,8 @@ function buildStatePayload({ game_id, includeCorrect }) {
     },
     current_question: current,
     total_questions: all.length,
-    players: playerList
+    players: playerList,
+    ...(player_id ? { my_answer_option_id: myAnswerOptionId } : {})
   };
 }
 

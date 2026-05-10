@@ -4,16 +4,30 @@
   let state = null;
   let socket = null;
   let myPlayerId = null;
-  let myPlayerToken = localStorage.getItem('wq_player_token') || null;
+  let activeRoomCode = null; // set after a successful join; used to namespace storage
+  let myPlayerToken = null;  // resolved per room via tokenKeyFor()
   let lastAnswerOptionId = null;
   let lastReveal = null;
   const root = document.getElementById('root');
 
-  function setBanner(msg) {
-    let b = document.getElementById('banner');
-    if (!b) { b = document.createElement('div'); b.id = 'banner'; b.className = 'banner'; document.body.prepend(b); }
-    b.textContent = msg;
-    b.style.display = msg ? 'block' : 'none';
+  // Storage is scoped per room so a guest who plays multiple events doesn't
+  // carry a stale token across quizzes (different game_id = server returns
+  // existing_player: null, which used to silently strand the user).
+  function tokenKeyFor(roomCode) {
+    return `wq_player_token:${(roomCode || '').toUpperCase()}`;
+  }
+  function loadTokenFor(roomCode) {
+    if (!roomCode) return null;
+    return localStorage.getItem(tokenKeyFor(roomCode))
+      // Backwards compat: migrate the legacy global key on first read.
+      || localStorage.getItem('wq_player_token')
+      || null;
+  }
+  function storeTokenFor(roomCode, token) {
+    if (!roomCode || !token) return;
+    localStorage.setItem(tokenKeyFor(roomCode), token);
+    // Drop legacy global key once we've written a scoped one.
+    localStorage.removeItem('wq_player_token');
   }
 
   async function start() {
@@ -105,10 +119,11 @@
       if (!r.ok) { document.getElementById('err').textContent = 'Room not found'; restoreJoin(); return; }
       quiz = await r.json();
     }
+    activeRoomCode = code;
+    myPlayerToken = loadTokenFor(code);
     if (socket) { try { socket.close(); } catch {} socket = null; }
     socket = WQ_connect({ role: 'player', room_code: code, ...(myPlayerToken ? { player_token: myPlayerToken } : {}) });
-    socket.on('connect', () => setBanner(''));
-    socket.on('disconnect', () => setBanner('Reconnecting…'));
+    WQ_statusBanner(socket);
     socket.on('connect_error', (e) => {
       restoreJoin();
       const errEl = document.getElementById('err');
@@ -120,7 +135,7 @@
     socket.on('joined', (j) => {
       myPlayerId = j.player_id;
       myPlayerToken = j.player_token;
-      localStorage.setItem('wq_player_token', myPlayerToken);
+      storeTokenFor(code, myPlayerToken);
     });
     socket.on('error', (e) => {
       restoreJoin();
@@ -129,7 +144,18 @@
       if (e.code === 'name_taken') errEl.textContent = 'That name is taken — pick another.';
       else errEl.textContent = e.code || 'Error';
     });
-    socket.on('state', (st) => { state = st; render(); });
+    socket.on('state', (st) => {
+      state = st;
+      // On rejoin during an active question we may already have voted —
+      // restore lastAnswerOptionId so the UI shows the locked state instead
+      // of inviting a duplicate vote (which the server would silently drop).
+      if (st && st.status === 'active' && typeof st.my_answer_option_id !== 'undefined') {
+        lastAnswerOptionId = st.my_answer_option_id || null;
+      }
+      // A new question implicitly resets reveal context.
+      if (!st || st.status !== 'revealing') lastReveal = null;
+      render();
+    });
     socket.on('question:show', () => { lastAnswerOptionId = null; lastReveal = null; render(); });
     socket.on('question:reveal', (r) => { lastReveal = r; render(); });
     socket.on('game:finished', (r) => { lastReveal = r; if (state) state.status = 'finished'; render(); });
@@ -167,18 +193,23 @@
   function renderQuestion() {
     const cur = state.current_question;
     if (!cur) return;
+    const alreadyLocked = !!lastAnswerOptionId;
     root.innerHTML = `
       <p class="font-ui" style="color: var(--muted); font-size: 14px;">Question ${cur.position} of ${state.total_questions}</p>
       <h2 style="margin: 8px 0 16px;">${escapeHtml(cur.text)}</h2>
       ${cur.image_url ? `<img src="${cur.image_url}" style="width:100%; border-radius: 12px;">` : ''}
       <div id="opts" style="display:grid; gap: 12px; margin-top: 12px;">
-        ${cur.options.map((o, i) => `
-          <button class="btn opt-btn" data-id="${o.id}" data-i="${i}">
-            <strong>${'ABCD'[i]}.</strong> ${escapeHtml(o.text)}
-          </button>
-        `).join('')}
+        ${cur.options.map((o, i) => {
+          const isMine = alreadyLocked && o.id === lastAnswerOptionId;
+          const cls = alreadyLocked ? (isMine ? 'locked-mine' : 'locked-other') : '';
+          return `
+            <button class="btn opt-btn ${cls}" data-id="${o.id}" data-i="${i}" ${alreadyLocked ? 'disabled' : ''}>
+              <strong>${'ABCD'[i]}.</strong> ${escapeHtml(o.text)}
+            </button>
+          `;
+        }).join('')}
       </div>
-      <p id="lockMsg" style="text-align:center; color: var(--muted); font-family:'Inter'; margin-top: 16px; display:none;">Answer locked — wait for reveal.</p>
+      <p id="lockMsg" style="text-align:center; color: var(--muted); font-family:'Inter'; margin-top: 16px; display:${alreadyLocked ? 'block' : 'none'};">Answer locked — wait for reveal.</p>
     `;
     document.querySelectorAll('.opt-btn').forEach(btn => btn.addEventListener('click', () => commit(btn)));
   }

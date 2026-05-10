@@ -64,6 +64,7 @@
 
   function connect() {
     socket = WQ_connect({ role: 'host', creator_token: token });
+    WQ_statusBanner(socket);
     socket.on('state', (s) => { state = s; if (state.status === 'active') liveDistribution = {}; render(); });
     socket.on('player:joined', () => { /* state will follow */ });
     socket.on('player:left', () => { /* state will follow */ });
