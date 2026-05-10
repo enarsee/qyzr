@@ -4,8 +4,14 @@ const games = require('../repos/games');
 const players = require('../repos/players');
 const questions = require('../repos/questions');
 const answers = require('../repos/answers');
+const faces = require('../repos/faces');
 const config = require('../config');
 const { getDb } = require('../db');
+
+function faceUrl(quizFaces, side, state) {
+  const f = quizFaces.find(x => x.side === side && x.state === state);
+  return f ? f.image_path : `/defaults/${side}-${state}.svg`;
+}
 
 const router = express.Router();
 
@@ -48,6 +54,16 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
   const winningSide = sideScores.bride > sideScores.groom
     ? quiz.bride_label
     : sideScores.groom > sideScores.bride ? quiz.groom_label : null;
+  const brideWins = sideScores.bride > sideScores.groom;
+  const groomWins = sideScores.groom > sideScores.bride;
+
+  // Faces for the VS panel — winner gets 'winner' state, loser 'sad', tie both 'neutral'.
+  const quizFaces = faces.byQuiz(quiz.id);
+  const brideMood = brideWins ? 'winner' : groomWins ? 'sad' : 'neutral';
+  const groomMood = groomWins ? 'winner' : brideWins ? 'sad' : 'neutral';
+  const brideFace = faceUrl(quizFaces, 'bride', brideMood);
+  const groomFace = faceUrl(quizFaces, 'groom', groomMood);
+  const crownSvg = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 19h20l-2-7-5 3-3-7-3 7-5-3-2 7z"/></svg>';
 
   // Build the page
   return `<!doctype html>
@@ -72,7 +88,7 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
   .q-card { background: var(--surface); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); padding: 20px 24px; margin-bottom: 20px; page-break-inside: avoid; }
   .q-num { font-family: 'Inter'; font-weight: 600; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
   .q-text { font-size: 22px; font-weight: 600; margin: 4px 0 16px; }
-  .q-img { max-width: 240px; max-height: 180px; border-radius: 8px; object-fit: cover; margin-bottom: 12px; }
+  .q-img { display: block; max-width: 480px; max-height: 380px; width: auto; height: auto; border-radius: 10px; object-fit: contain; margin: 0 auto 14px; background: var(--bg); }
   .q-tag { display: inline-block; background: var(--bg); border-radius: 999px; padding: 2px 10px; font-family: 'Inter'; font-size: 11px; color: var(--muted); margin-left: 8px; vertical-align: middle; }
   .q-tag.trivia { background: #FFF8E1; color: var(--gold); }
   .opt-row { display: grid; grid-template-columns: auto 1fr auto auto; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px dashed #E3D9CC; }
@@ -92,12 +108,22 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
   .lb h3 { font-family: 'Inter'; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 8px; }
   .lb ol { margin: 0; padding-left: 20px; font-family: 'Cormorant Infant', serif; font-size: 18px; }
   .lb li { padding: 3px 0; }
-  .vs { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: center; padding: 18px; background: var(--surface); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); margin-top: 24px; page-break-inside: avoid; }
-  .vs-side { text-align: center; font-family: 'Inter'; font-weight: 600; font-size: 18px; }
-  .vs-side .score { font-size: 28px; color: var(--ink); display: block; margin-bottom: 4px; }
-  .vs-vs { font-family: 'Great Vibes', cursive; font-size: 28px; color: var(--rose); }
-  .vs.winning-bride .bride { color: var(--gold); }
-  .vs.winning-groom .groom { color: var(--gold); }
+  .vs { display: grid; grid-template-columns: 1fr auto 1fr; gap: 24px; align-items: center; padding: 24px 20px; background: var(--surface); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); margin-top: 24px; page-break-inside: avoid; }
+  .vs-side { text-align: center; font-family: 'Inter'; }
+  .vs-face-wrap { position: relative; display: inline-block; }
+  .vs-face { width: clamp(96px, 12vw, 140px); height: clamp(96px, 12vw, 140px); border-radius: 50%; object-fit: cover; object-position: 50% 25%; background: var(--surface); border: 3px solid transparent; }
+  .vs-face.winner-face { border-color: var(--gold); box-shadow: 0 0 0 4px rgba(184,137,58,0.18); }
+  .vs-crown { position: absolute; top: -6px; right: -6px; width: 28px; height: 28px; background: var(--gold); color: #fff; border-radius: 50%; display: grid; place-items: center; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+  .vs-crown svg { width: 16px; height: 16px; }
+  .vs-side .score { font-size: 32px; font-weight: 700; color: var(--ink); display: block; margin: 12px 0 2px; font-variant-numeric: tabular-nums; line-height: 1; }
+  .vs-side .name { font-size: 16px; font-weight: 600; color: var(--muted); }
+  .vs.winning-bride .bride .name, .vs.winning-bride .bride .score { color: var(--ink); }
+  .vs.winning-groom .groom .name, .vs.winning-groom .groom .score { color: var(--ink); }
+  .vs-vs { font-family: 'Great Vibes', cursive; font-size: 36px; color: var(--rose); line-height: 1; }
+  @media print {
+    .vs-face.winner-face { border-color: #444; box-shadow: none; }
+    .vs-crown { background: #444; box-shadow: none; }
+  }
   .footer { text-align: center; color: var(--muted); font-family: 'Inter'; font-size: 12px; margin-top: 48px; }
 
   /* Print: clean black-on-white, hide toolbar */
@@ -192,12 +218,26 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
   ` : ''}
 
   ${hasTrivia && (sideScores.bride > 0 || sideScores.groom > 0) ? `
-    <div class="vs ${winningSide === quiz.bride_label ? 'winning-bride' : ''} ${winningSide === quiz.groom_label ? 'winning-groom' : ''}">
-      <div class="vs-side bride"><span class="score">${sideScores.bride}</span>${escapeHtml(quiz.bride_label)}</div>
+    <div class="vs ${brideWins ? 'winning-bride' : ''} ${groomWins ? 'winning-groom' : ''}">
+      <div class="vs-side bride">
+        <div class="vs-face-wrap">
+          <img class="vs-face ${brideWins ? 'winner-face' : ''}" src="${brideFace}" alt="">
+          ${brideWins ? `<span class="vs-crown" aria-label="Winner">${crownSvg}</span>` : ''}
+        </div>
+        <span class="score">${sideScores.bride}</span>
+        <div class="name">${escapeHtml(quiz.bride_label)}</div>
+      </div>
       <div class="vs-vs">vs</div>
-      <div class="vs-side groom"><span class="score">${sideScores.groom}</span>${escapeHtml(quiz.groom_label)}</div>
+      <div class="vs-side groom">
+        <div class="vs-face-wrap">
+          <img class="vs-face ${groomWins ? 'winner-face' : ''}" src="${groomFace}" alt="">
+          ${groomWins ? `<span class="vs-crown" aria-label="Winner">${crownSvg}</span>` : ''}
+        </div>
+        <span class="score">${sideScores.groom}</span>
+        <div class="name">${escapeHtml(quiz.groom_label)}</div>
+      </div>
     </div>
-    ${winningSide ? `<p style="text-align:center;font-family:'Cormorant Infant',serif;font-size:20px;margin-top:12px;color:var(--ink);">🏆 <strong>${escapeHtml(winningSide)}</strong> takes the night.</p>` : ''}
+    ${winningSide ? `<p style="text-align:center;font-family:'Cormorant Infant',serif;font-size:20px;margin-top:14px;color:var(--ink);"><strong>${escapeHtml(winningSide)}</strong> takes the night.</p>` : sideTotal > 0 ? `<p style="text-align:center;font-family:'Cormorant Infant',serif;font-size:18px;margin-top:14px;color:var(--muted);">A perfect tie.</p>` : ''}
   ` : ''}
 
   <div class="footer">
