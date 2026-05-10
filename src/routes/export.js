@@ -359,7 +359,6 @@ function buildExport({ quiz, game, qs, players: allPlayers }) {
   <div class="export-toolbar">
     <div class="meta">${quiz.name} · ${game.finished_at ? fmtDate(game.finished_at) : 'in progress'}</div>
     <button class="btn btn-primary" onclick="window.print()" id="printBtn">Save as PDF / Print</button>
-    <a class="btn" href="/host/${quiz.creator_token}">Back to host</a>
   </div>
 
   <div class="hero-band ${quiz.hero_image_path ? 'has-photo' : 'no-photo'}">
