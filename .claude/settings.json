@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(git status:*)",
+      "Bash(git diff)",
+      "Bash(git diff:*)",
+      "Bash(git log)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push origin dev)",
+      "Bash(git push origin dev:*)",
+      "Bash(git pull)",
+      "Bash(git pull:*)",
+      "Bash(git restore:*)",
+      "Bash(git checkout:*)",
+      "Bash(git branch)",
+      "Bash(git branch:*)",
+      "Bash(git stash:*)",
+
+      "Bash(ssh root@5.223.61.145:*)",
+
+      "Bash(npm test)",
+      "Bash(npm test:*)",
+      "Bash(npm run test:*)",
+      "Bash(npx jest:*)",
+      "Bash(npm start)",
+      "Bash(npm run dev)",
+      "Bash(npm run watch)",
+
+      "Bash(curl -s:*)",
+      "Bash(curl -sf:*)",
+      "Bash(curl -si:*)",
+
+      "Bash(ls:*)",
+      "Bash(find . -name:*)",
+      "Bash(find . -type:*)",
+      "Bash(grep:*)",
+      "Bash(wc:*)",
+      "Bash(rm -f /tmp/*)",
+      "Bash(mkdir -p:*)",
+
+      "Bash(node -e:*)",
+
+      "Bash(pkill -f \"node src/server.js\":*)",
+      "Bash(lsof -ti:*)",
+      "Bash(ps aux | grep:*)"
+    ],
+    "ask": [
+      "Bash(git push origin main:*)",
+      "Bash(git push --force:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git rebase:*)",
+      "Bash(ssh root@5.223.61.145 \"cat /opt/qyzr/.env*\")",
+      "Bash(ssh root@5.223.61.145 \"cat /opt/qyzr/data/*\")",
+      "Bash(ssh root@5.223.61.145 \"rm:*\")",
+      "Bash(ssh root@5.223.61.145 \"docker compose down*\")"
+    ],
+    "deny": []
+  }
+}

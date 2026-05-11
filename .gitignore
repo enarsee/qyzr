@@ -6,3 +6,6 @@ coverage/
 .DS_Store
 playwright-report/
 test-results/
+
+# Claude Code: per-machine overrides only. The shared settings.json IS committed.
+.claude/settings.local.json
